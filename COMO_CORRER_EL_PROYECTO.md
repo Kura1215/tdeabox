@@ -118,3 +118,82 @@ El repositorio está organizado de la siguiente manera:
 *   `uploads/`: Carpeta física en el servidor que almacena temporalmente las imágenes asociadas a publicaciones, comentarios y avatares subidos.
 *   `README.md`: Documentación académica explicativa de diseño y preguntas de estudio.
 *   `COMO_CORRER_EL_PROYECTO.md`: Esta guía de uso y ejecución rápida.
+
+---
+
+## 5. Comandos útiles de Base de Datos
+
+### 1. Conectarse a la base de datos tdeavox desde la terminal
+```sql
+mysql -u root -p tdeavox
+```
+
+### 2. Ver todos los usuarios registrados (sin mostrar contraseñas)
+```sql
+SELECT id, nombre, username, correo, foto_perfil, fecha_registro FROM usuarios;
+```
+
+### 3. Ver todas las publicaciones con el nombre del autor y su categoría
+```sql
+SELECT p.id, p.titulo, u.nombre AS autor, c.nombre AS categoria, p.fecha_creacion 
+FROM posts p 
+JOIN usuarios u ON p.usuario_id = u.id 
+JOIN categorias c ON p.categoria_id = c.id;
+```
+
+### 4. Ver todos los comentarios con el nombre del autor y el título del post
+```sql
+SELECT com.id, com.contenido, u.nombre AS autor, p.titulo AS titulo_post, com.fecha_creacion 
+FROM comentarios com 
+JOIN usuarios u ON com.usuario_id = u.id 
+JOIN posts p ON com.post_id = p.id;
+```
+
+### 5. Ver las publicaciones de un usuario específico filtrando por su username
+```sql
+SELECT p.id, p.titulo, p.contenido, p.fecha_creacion 
+FROM posts p 
+JOIN usuarios u ON p.usuario_id = u.id 
+WHERE u.username = 'nombre_usuario';
+```
+
+### 6. Ver todos los comentarios de un post específico buscando por su título
+```sql
+SELECT com.id, com.contenido, u.nombre AS autor, com.fecha_creacion 
+FROM comentarios com 
+JOIN posts p ON com.post_id = p.id 
+JOIN usuarios u ON com.usuario_id = u.id 
+WHERE p.titulo = 'Título del Post';
+```
+
+### 7. Contar la cantidad de publicaciones creadas en cada categoría
+```sql
+SELECT c.nombre AS categoria, COUNT(p.id) AS total_posts 
+FROM categorias c 
+LEFT JOIN posts p ON c.id = p.categoria_id 
+GROUP BY c.id, c.nombre;
+```
+
+### 8. Ver los últimos 5 posts creados en el foro
+```sql
+SELECT p.id, p.titulo, u.nombre AS autor, p.fecha_creacion 
+FROM posts p 
+JOIN usuarios u ON p.usuario_id = u.id 
+ORDER BY p.fecha_creacion DESC 
+LIMIT 5;
+```
+
+### 9. Buscar publicaciones que contengan una palabra clave en el título
+```sql
+SELECT p.id, p.titulo, u.nombre AS autor 
+FROM posts p 
+JOIN usuarios u ON p.usuario_id = u.id 
+WHERE p.titulo LIKE '%palabra_clave%';
+```
+
+### 10. Ver el perfil completo de un usuario (sin contraseña) buscando por su correo electrónico
+```sql
+SELECT id, nombre, username, correo, foto_perfil, fecha_registro 
+FROM usuarios 
+WHERE correo = 'correo@ejemplo.com';
+```
