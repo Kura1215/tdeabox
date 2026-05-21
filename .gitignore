@@ -1,0 +1,22 @@
+# Datos sensibles - NUNCA subir al repo
+backend/src/main/resources/application.properties
+
+# Imágenes subidas por usuarios
+uploads/
+
+
+# Compilados de Maven
+backend/target/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos de IDEs
+.idea/
+*.iml
+.vscode/
+.antigravity/
+
+# Logs
+*.log
