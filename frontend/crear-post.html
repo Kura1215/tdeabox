@@ -7,6 +7,10 @@
     <meta name="description" content="Redacta una nueva publicación para la comunidad estudiantil del Tecnológico de Antioquia. Comparte dudas académicas, eventos u objetos perdidos.">
     <!-- Enlace a la hoja de estilos retro universitaria -->
     <link rel="stylesheet" href="css/styles.css">
+    <!-- Scripts de la Aplicación (con defer para que se ejecuten después de cargar el DOM) -->
+    <script src="js/api.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/crear-post.js" defer></script>
     <style>
         /* Ajustes específicos de presentación para la creación de posts */
         .sidebar-widget {
@@ -125,9 +129,5 @@
         </main>
     </div>
 
-    <!-- Scripts de la Aplicación -->
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/crear-post.js"></script>
 </body>
 </html>

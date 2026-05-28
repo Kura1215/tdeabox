@@ -1,192 +1,141 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TdeaVox - Foro Universitario Tecnológico de Antioquia</title>
-    <meta
-      name="description"
-      content="Bienvenido a TdeaVox, el foro exclusivo para la comunidad académica del Tecnológico de Antioquia. Regístrate e inicia sesión para conectar con tus compañeros."
-    />
+    <meta name="description" content="Bienvenido a TdeaVox, el foro exclusivo para la comunidad académica del Tecnológico de Antioquia. Regístrate e inicia sesión para conectar con tus compañeros.">
     <!-- Enlace a la hoja de estilos retro universitaria -->
-    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/styles.css">
+    <!-- Scripts de la Aplicación (con defer para que se ejecuten después de cargar el DOM) -->
+    <script src="js/api.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/index.js" defer></script>
     <style>
-      /* Ajuste específico para centrar y limitar el ancho del login/registro en pantallas grandes */
-      .login-container {
-        justify-content: center;
-        max-width: 480px;
-        margin: 40px auto;
-      }
-      .welcome-header {
-        text-align: center;
-        margin-bottom: 20px;
-      }
-      .welcome-header h1 {
-        font-family: "Arial Black", sans-serif;
-        color: var(--azul);
-        font-size: 28px;
-        letter-spacing: -1.5px;
-        margin-bottom: 4px;
-      }
-      .welcome-header h1 span {
-        color: var(--azul-claro);
-      }
-      .welcome-header p {
-        color: var(--gris-medio);
-        font-family: Arial, sans-serif;
-        font-size: 12px;
-      }
-      .toggle-link {
-        text-align: center;
-        margin-top: 12px;
-        font-family: Arial, sans-serif;
-        font-size: 12px;
-      }
-      .toggle-link a {
-        color: var(--azul-claro);
-        font-weight: bold;
-        text-decoration: none;
-      }
-      .toggle-link a:hover {
-        text-decoration: underline;
-      }
+        /* Ajuste específico para centrar y limitar el ancho del login/registro en pantallas grandes */
+        .login-container {
+            justify-content: center;
+            max-width: 480px;
+            margin: 40px auto;
+        }
+        .welcome-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .welcome-header h1 {
+            font-family: 'Arial Black', sans-serif;
+            color: var(--azul);
+            font-size: 28px;
+            letter-spacing: -1.5px;
+            margin-bottom: 4px;
+        }
+        .welcome-header h1 span {
+            color: var(--azul-claro);
+        }
+        .welcome-header p {
+            color: var(--gris-medio);
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+        .toggle-link {
+            text-align: center;
+            margin-top: 12px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+        .toggle-link a {
+            color: var(--azul-claro);
+            font-weight: bold;
+            text-decoration: none;
+        }
+        .toggle-link a:hover {
+            text-decoration: underline;
+        }
     </style>
-    <!-- Carga de Scripts del Sistema -->
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/index.js"></script>
-  </head>
-  <body>
+</head>
+<body>
+
     <!-- Header / Navbar Minimalista para Login -->
     <nav>
-      <a href="index.html" class="nav-logo" id="nav-logo-link"
-        >Tdea<span>Vox</span></a
-      >
-      <div class="nav-links">
-        <span
-          style="color: white; font-family: Arial, sans-serif; font-size: 11px"
-          >Portal de Estudiantes</span
-        >
-      </div>
+        <a href="index.html" class="nav-logo" id="nav-logo-link">Tdea<span>Vox</span></a>
+        <div class="nav-links">
+            <span style="color: white; font-family: Arial, sans-serif; font-size: 11px;">Portal de Estudiantes</span>
+        </div>
     </nav>
 
     <!-- Contenido Principal -->
     <div class="container login-container">
-      <main class="main-content">
-        <!-- Cabecera de bienvenida -->
-        <div class="welcome-header">
-          <h1>Tdea<span>Vox</span></h1>
-          <p>La red social y foro exclusivo del Tecnológico de Antioquia</p>
-        </div>
-
-        <!-- Contenedor global de alertas -->
-        <div id="alert-message" class="alerta"></div>
-
-        <!-- Caja de Inicio de Sesión (Login) -->
-        <div id="login-box" class="box">
-          <div class="box-header">INICIAR SESIÓN</div>
-          <div class="box-body">
-            <form id="login-form">
-              <div class="form-group">
-                <label for="login-correo">Correo Institucional</label>
-                <input
-                  type="email"
-                  id="login-correo"
-                  placeholder="ejemplo@correo.tdea.edu.co"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="login-password">Contraseña</label>
-                <input
-                  type="password"
-                  id="login-password"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                id="btn-login-submit"
-                class="btn btn-primary"
-                style="width: 100%; margin-top: 8px"
-              >
-                Ingresar al Foro
-              </button>
-            </form>
-            <div class="toggle-link">
-              ¿No tienes una cuenta?
-              <a href="#" id="link-show-register">Regístrate aquí</a>
+        <main class="main-content">
+            
+            <!-- Cabecera de bienvenida -->
+            <div class="welcome-header">
+                <h1>Tdea<span>Vox</span></h1>
+                <p>La red social y foro exclusivo del Tecnológico de Antioquia</p>
             </div>
-          </div>
-        </div>
 
-        <!-- Caja de Registro -->
-        <div id="register-box" class="box" style="display: none">
-          <div class="box-header">REGISTRAR NUEVA CUENTA</div>
-          <div class="box-body">
-            <form id="register-form">
-              <div class="form-group">
-                <label for="reg-nombre">Nombre Completo</label>
-                <input
-                  type="text"
-                  id="reg-nombre"
-                  placeholder="Juan Pérez"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="reg-username">Nombre de Usuario (Apodo)</label>
-                <input
-                  type="text"
-                  id="reg-username"
-                  placeholder="juan_tdea"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="reg-correo">Correo Institucional</label>
-                <input
-                  type="email"
-                  id="reg-correo"
-                  placeholder="usuario@correo.tdea.edu.co"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="reg-password">Contraseña</label>
-                <input
-                  type="password"
-                  id="reg-password"
-                  placeholder="Mínimo 6 caracteres"
-                  required
-                />
-              </div>
-              <div class="form-group">
-                <label for="reg-confirm-password">Confirmar Contraseña</label>
-                <input
-                  type="password"
-                  id="reg-confirm-password"
-                  placeholder="Repite tu contraseña"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                id="btn-register-submit"
-                class="btn btn-primary"
-                style="width: 100%; margin-top: 8px"
-              >
-                Crear Cuenta
-              </button>
-            </form>
-            <div class="toggle-link">
-              ¿Ya tienes cuenta registrada?
-              <a href="#" id="link-show-login">Inicia sesión aquí</a>
+            <!-- Contenedor global de alertas -->
+            <div id="alert-message" class="alerta"></div>
+
+            <!-- Caja de Inicio de Sesión (Login) -->
+            <div id="login-box" class="box">
+                <div class="box-header">INICIAR SESIÓN</div>
+                <div class="box-body">
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label for="login-correo">Correo Institucional</label>
+                            <input type="email" id="login-correo" placeholder="ejemplo@correo.tdea.edu.co" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">Contraseña</label>
+                            <input type="password" id="login-password" placeholder="••••••••" required>
+                        </div>
+                        <button type="submit" id="btn-login-submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+                            Ingresar al Foro
+                        </button>
+                    </form>
+                    <div class="toggle-link">
+                        ¿No tienes una cuenta? <a href="#" id="link-show-register">Regístrate aquí</a>
+                    </div>
+                </div>
             </div>
-          </div>
-        </div>
-      </main>
+
+            <!-- Caja de Registro -->
+            <div id="register-box" class="box" style="display: none;">
+                <div class="box-header">REGISTRAR NUEVA CUENTA</div>
+                <div class="box-body">
+                    <form id="register-form">
+                        <div class="form-group">
+                            <label for="reg-nombre">Nombre Completo</label>
+                            <input type="text" id="reg-nombre" placeholder="Juan Pérez" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-username">Nombre de Usuario (Apodo)</label>
+                            <input type="text" id="reg-username" placeholder="juan_tdea" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-correo">Correo Institucional</label>
+                            <input type="email" id="reg-correo" placeholder="usuario@correo.tdea.edu.co" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-password">Contraseña</label>
+                            <input type="password" id="reg-password" placeholder="Mínimo 6 caracteres" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reg-confirm-password">Confirmar Contraseña</label>
+                            <input type="password" id="reg-confirm-password" placeholder="Repite tu contraseña" required>
+                        </div>
+                        <button type="submit" id="btn-register-submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+                            Crear Cuenta
+                        </button>
+                    </form>
+                    <div class="toggle-link">
+                        ¿Ya tienes cuenta registrada? <a href="#" id="link-show-login">Inicia sesión aquí</a>
+                    </div>
+                </div>
+            </div>
+
+        </main>
     </div>
-  </body>
+
+</body>
 </html>
