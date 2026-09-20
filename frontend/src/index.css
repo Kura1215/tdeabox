@@ -1,0 +1,403 @@
+:root {
+    --azul: #1a3a5c;
+    --azul-claro: #2e6da4;
+    --verde: #2e8b57;
+    --fondo: #e8edf4;
+    --blanco: #ffffff;
+    --gris-claro: #dce3ec;
+    --gris-medio: #6b7280;
+    --texto: #1c1c1e;
+    --borde: #c8d0dc;
+    --rojo: #cc0000;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    background-color: var(--fondo);
+    color: var(--texto);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* Navbar */
+nav {
+    background-color: var(--azul);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 3px solid var(--azul-claro);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-logo {
+    color: white;
+    font-size: 22px;
+    font-weight: bold;
+    font-family: 'Arial Black', sans-serif;
+    letter-spacing: -1px;
+    text-decoration: none;
+}
+
+.nav-logo span { color: #a8c8f0; }
+
+.nav-links a {
+    color: #c8dff5;
+    text-decoration: none;
+    margin-left: 14px;
+    font-size: 12px;
+    font-family: Arial, sans-serif;
+    cursor: pointer;
+}
+
+.nav-links a:hover { color: white; text-decoration: underline; }
+
+.nav-links a.activo { text-decoration: underline; color: white; }
+
+/* Layout principal */
+.container {
+    max-width: 960px;
+    margin: 16px auto;
+    padding: 0 12px;
+    display: flex;
+    gap: 14px;
+}
+
+.sidebar {
+    width: 200px;
+    flex-shrink: 0;
+}
+
+.main-content { flex: 1; }
+
+/* Tarjetas / Cajas */
+.box {
+    background: var(--blanco);
+    border: 1px solid var(--borde);
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.box-header {
+    background: var(--azul-claro);
+    color: white;
+    padding: 6px 10px;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    border-radius: 3px 3px 0 0;
+}
+
+.box-body { padding: 10px; }
+
+/* Post card */
+.post-card {
+    background: var(--blanco);
+    border: 1px solid var(--borde);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 10px;
+    transition: border-color 0.15s;
+}
+
+.post-card:hover { border-color: var(--azul-claro); }
+
+.post-card h3 {
+    font-size: 15px;
+    font-family: Arial, sans-serif;
+    color: var(--azul-claro);
+    margin-bottom: 4px;
+}
+
+.post-card h3 a { color: var(--azul-claro); text-decoration: none; }
+.post-card h3 a:hover { text-decoration: underline; }
+
+.post-meta {
+    color: var(--gris-medio);
+    font-size: 11px;
+    font-family: Arial, sans-serif;
+    margin-bottom: 8px;
+}
+
+.badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-family: Arial, sans-serif;
+    font-weight: bold;
+    color: white;
+}
+
+.badge-academico  { background: var(--azul); }
+.badge-eventos    { background: var(--verde); }
+.badge-perdidos   { background: #b45309; }
+.badge-general    { background: var(--gris-medio); }
+
+/* Botones */
+.btn {
+    display: inline-block;
+    padding: 6px 14px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    text-decoration: none;
+    transition: background 0.15s;
+}
+
+.btn-primary { background: var(--azul-claro); color: white; }
+.btn-primary:hover { background: var(--azul); }
+
+.btn-danger { background: var(--rojo); color: white; }
+.btn-danger:hover { background: #990000; }
+
+.btn-sm { padding: 3px 9px; font-size: 11px; }
+
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Formularios */
+.form-group { margin-bottom: 10px; }
+
+.form-group label {
+    display: block;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--texto);
+    margin-bottom: 3px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--borde);
+    border-radius: 3px;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    background: white;
+    color: var(--texto);
+    outline: none;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    border-color: var(--azul-claro);
+}
+
+/* Alertas */
+.alerta {
+    padding: 8px 12px;
+    border-radius: 3px;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+.alerta-error   { background: #ffe0e0; border: 1px solid var(--rojo); color: var(--rojo); }
+.alerta-ok      { background: #e0f0e0; border: 1px solid var(--verde); color: #1a5c30; }
+
+/* Filtros de categoria */
+.filtros {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.filtro-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--borde);
+    background: white;
+    border-radius: 12px;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.filtro-btn:hover, .filtro-btn.activo {
+    background: var(--azul-claro);
+    color: white;
+    border-color: var(--azul-claro);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .container { flex-direction: column; }
+    .sidebar { width: 100%; }
+    nav { flex-direction: column; gap: 8px; }
+}
+
+/* Busqueda */
+.search-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.search-bar input { flex: 1; }
+
+/* Imagen en post */
+.post-img {
+    max-width: 100%;
+    border-radius: 3px;
+    border: 1px solid var(--borde);
+    margin-top: 8px;
+}
+
+/* Widgets de sidebar (perfil, categorias) */
+.sidebar-widget {
+    margin-bottom: 12px;
+}
+
+.avatar-img {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--azul-claro);
+    margin: 0 auto 8px auto;
+    display: block;
+    background-color: var(--gris-claro);
+}
+
+.user-info {
+    text-align: center;
+    font-family: Arial, sans-serif;
+}
+
+.user-info h4 {
+    font-size: 13px;
+    color: var(--azul);
+    font-weight: bold;
+    margin-bottom: 2px;
+    word-wrap: break-word;
+}
+
+.user-info p {
+    color: var(--gris-medio);
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+
+/* Historial de publicaciones en perfil */
+.post-historial-meta {
+    color: var(--gris-medio);
+    font-size: 11px;
+    font-family: Arial, sans-serif;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Detalle de publicacion */
+.post-completo {
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.post-completo h2 {
+    font-size: 18px;
+    font-family: Arial, sans-serif;
+    color: var(--azul);
+    margin-bottom: 6px;
+    font-weight: bold;
+}
+
+.comentario-item {
+    padding: 12px;
+    border-bottom: 1px solid var(--borde);
+}
+
+.comentario-item:last-child {
+    border-bottom: none;
+}
+
+.comentario-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 8px;
+    vertical-align: middle;
+    background-color: var(--gris-claro);
+}
+
+.comentario-meta {
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    color: var(--gris-medio);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.comentario-autor {
+    font-weight: bold;
+    color: var(--azul-claro);
+    margin-right: 6px;
+}
+
+/* Pantalla de login / registro */
+.login-container {
+    justify-content: center;
+    max-width: 480px;
+    margin: 40px auto;
+}
+
+.welcome-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.welcome-header h1 {
+    font-family: 'Arial Black', sans-serif;
+    color: var(--azul);
+    font-size: 28px;
+    letter-spacing: -1.5px;
+    margin-bottom: 4px;
+}
+
+.welcome-header h1 span {
+    color: var(--azul-claro);
+}
+
+.welcome-header p {
+    color: var(--gris-medio);
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+}
+
+.toggle-link {
+    text-align: center;
+    margin-top: 12px;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+}
+
+.toggle-link a {
+    color: var(--azul-claro);
+    font-weight: bold;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.toggle-link a:hover {
+    text-decoration: underline;
+}
