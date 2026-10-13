@@ -20,7 +20,11 @@ export default function PostCard({ post, onEliminar }) {
             <div className={onEliminar ? 'post-historial-meta' : 'post-meta'}>
                 <div>
                     {!onEliminar && (
-                        <>Publicado por <strong>{post.nombreUsuario || post.usernameUsuario}</strong> (@{post.usernameUsuario}) el {formatearFecha(post.fechaCreacion)} en </>
+                        <>Publicado por{' '}
+                            <Link to={`/usuario/${post.usuarioId}`}
+                                state={{ nombre: post.nombreUsuario, username: post.usernameUsuario, fotoPerfil: post.fotoPerfilUsuario }}>
+                                <strong>{post.nombreUsuario || post.usernameUsuario}</strong>
+                            </Link> (@{post.usernameUsuario}) el {formatearFecha(post.fechaCreacion)} en </>
                     )}
                     {onEliminar && <>Publicado el {formatearFecha(post.fechaCreacion)} en </>}
                     <span className={`badge ${badgeClass}`}>{post.nombreCategoria}</span>

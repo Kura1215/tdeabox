@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, API_URL } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { obtenerClaseCategoria, formatearFecha } from '../utils';
@@ -117,7 +117,11 @@ export default function Post() {
                             <>
                                 <h2>{post.titulo}</h2>
                                 <div className="post-meta" style={{ borderBottom: '1px solid var(--gris-claro)', paddingBottom: '8px' }}>
-                                    Publicado por <strong>{post.nombreUsuario || post.usernameUsuario}</strong> (@{post.usernameUsuario}) el {formatearFecha(post.fechaCreacion)} en{' '}
+                                    Publicado por{' '}
+                                    <Link to={`/usuario/${post.usuarioId}`}
+                                        state={{ nombre: post.nombreUsuario, username: post.usernameUsuario, fotoPerfil: post.fotoPerfilUsuario }}>
+                                        <strong>{post.nombreUsuario || post.usernameUsuario}</strong>
+                                    </Link> (@{post.usernameUsuario}) el {formatearFecha(post.fechaCreacion)} en{' '}
                                     <span className={`badge ${obtenerClaseCategoria(post.categoriaId)}`}>{post.nombreCategoria}</span>
                                 </div>
                                 <div style={{ fontSize: '14px', lineHeight: 1.6, margin: '14px 0', whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif' }}>

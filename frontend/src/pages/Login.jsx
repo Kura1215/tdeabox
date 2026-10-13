@@ -79,19 +79,16 @@ export default function Login() {
         }
 
         try {
-            const response = await api.register(regNombre, regUsername, regCorreo, regPassword);
-            setAlerta({ mensaje: response.mensaje || '¡Registro exitoso! Ya puedes iniciar sesion.', tipo: 'ok' });
+            await api.register(regNombre, regUsername, regCorreo, regPassword);
 
-            setRegNombre('');
-            setRegUsername('');
-            setRegCorreo('');
-            setRegPassword('');
-            setRegConfirmPassword('');
+            // al registrarse iniciamos sesion automaticamente con las mismas credenciales
+            const data = await api.login(regCorreo, regPassword);
+            setAlerta({ mensaje: '¡Registro exitoso! Redirigiendo...', tipo: 'ok' });
+            login(data.token, data.usuarioId, data.nombre, data.username, data.fotoPerfil);
 
             setTimeout(() => {
-                setMostrarRegistro(false);
-                setAlerta({ mensaje: '', tipo: '' });
-            }, 1500);
+                navigate('/feed');
+            }, 800);
         } catch (error) {
             setAlerta({ mensaje: error.message || 'Error al registrar el usuario.', tipo: 'error' });
         }

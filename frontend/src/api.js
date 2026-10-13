@@ -109,5 +109,28 @@ export const api = {
             method: 'PUT',
             body: formData
         });
+    },
+
+    // PLACEHOLDER: los likes se guardan en localStorage hasta que exista en el backend
+    // POST /api/comentarios/:id/like (ver NOTES.md)
+    likesComentario: (id) => {
+        return leerLikes(id);
+    },
+
+    toggleLikeComentario: (id) => {
+        const todos = JSON.parse(localStorage.getItem('likes_comentarios') || '{}');
+        const usuarioId = localStorage.getItem('usuarioId');
+        const lista = todos[id] || [];
+
+        todos[id] = lista.includes(usuarioId) ? lista.filter((u) => u !== usuarioId) : [...lista, usuarioId];
+        localStorage.setItem('likes_comentarios', JSON.stringify(todos));
+
+        return leerLikes(id);
     }
 };
+
+function leerLikes(id) {
+    const todos = JSON.parse(localStorage.getItem('likes_comentarios') || '{}');
+    const lista = todos[id] || [];
+    return { total: lista.length, likedByMe: lista.includes(localStorage.getItem('usuarioId')) };
+}

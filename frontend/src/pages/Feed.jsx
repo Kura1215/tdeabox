@@ -22,17 +22,19 @@ export default function Feed() {
             .catch(() => setAlerta({ mensaje: 'No se pudieron cargar las categorias del foro.', tipo: 'error' }));
     }, []);
 
+    // busqueda en vivo: esperamos 300ms despues de la ultima tecla antes de pedir los posts
     useEffect(() => {
-        cargarPublicaciones();
+        const espera = setTimeout(cargarPublicaciones, 300);
+        return () => clearTimeout(espera);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [categoriaSeleccionada]);
+    }, [categoriaSeleccionada, busqueda]);
 
-    async function cargarPublicaciones(textoBusqueda = busqueda) {
+    async function cargarPublicaciones() {
         setCargando(true);
         setAlerta({ mensaje: '', tipo: '' });
 
         try {
-            const data = await api.listarPosts(categoriaSeleccionada, textoBusqueda);
+            const data = await api.listarPosts(categoriaSeleccionada, busqueda);
             setPosts(data);
         } catch (error) {
             setPosts([]);
@@ -40,10 +42,6 @@ export default function Feed() {
         } finally {
             setCargando(false);
         }
-    }
-
-    function handleBuscar() {
-        cargarPublicaciones(busqueda);
     }
 
     function handleFiltroClick(id) {
@@ -89,9 +87,7 @@ export default function Feed() {
                             placeholder="Buscar publicaciones por titulo..."
                             value={busqueda}
                             onChange={(e) => setBusqueda(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleBuscar(); }}
                         />
-                        <button className="btn btn-primary" onClick={handleBuscar}>Buscar</button>
                     </div>
 
                     <Alerta mensaje={alerta.mensaje} tipo={alerta.tipo} />
