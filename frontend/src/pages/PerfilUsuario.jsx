@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
@@ -11,28 +11,21 @@ import Alerta from '../components/Alerta';
 export default function PerfilUsuario() {
     const { id } = useParams();
     const { usuario } = useAuth();
-    const location = useLocation();
 
-    // PLACEHOLDER: hasta que exista GET /api/users/:id (ver NOTES.md) los datos del
-    // usuario vienen del Link y los posts se filtran de la lista general
-    const [datos, setDatos] = useState(location.state || null);
+    const [datos, setDatos] = useState(null);
     const [posts, setPosts] = useState([]);
     const [cargando, setCargando] = useState(true);
     const [alerta, setAlerta] = useState({ mensaje: '', tipo: '' });
 
     useEffect(() => {
-        api.listarPosts()
-            .then((todos) => {
-                const delUsuario = todos.filter((p) => String(p.usuarioId) === id);
-                setPosts(delUsuario);
-                if (!datos && delUsuario.length > 0) {
-                    const p = delUsuario[0];
-                    setDatos({ nombre: p.nombreUsuario, username: p.usernameUsuario, fotoPerfil: p.fotoPerfilUsuario });
-                }
+        setCargando(true);
+        api.verUsuario(id)
+            .then((data) => {
+                setDatos(data);
+                setPosts(data.posts || []);
             })
             .catch(() => setAlerta({ mensaje: 'No se pudo cargar el perfil del usuario.', tipo: 'error' }))
             .finally(() => setCargando(false));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
 
     if (usuario && String(usuario.usuarioId) === id) {

@@ -111,26 +111,16 @@ export const api = {
         });
     },
 
-    // PLACEHOLDER: los likes se guardan en localStorage hasta que exista en el backend
-    // POST /api/comentarios/:id/like (ver NOTES.md)
-    likesComentario: (id) => {
-        return leerLikes(id);
+    verUsuario: (id) => {
+        return apiRequest(`/api/users/${id}`, { method: 'GET' });
     },
 
-    toggleLikeComentario: (id) => {
-        const todos = JSON.parse(localStorage.getItem('likes_comentarios') || '{}');
-        const usuarioId = localStorage.getItem('usuarioId');
-        const lista = todos[id] || [];
+    // alterna el like y devuelve { likes, likedByMe }
+    likePost: (id) => {
+        return apiRequest(`/api/posts/${id}/like`, { method: 'POST' });
+    },
 
-        todos[id] = lista.includes(usuarioId) ? lista.filter((u) => u !== usuarioId) : [...lista, usuarioId];
-        localStorage.setItem('likes_comentarios', JSON.stringify(todos));
-
-        return leerLikes(id);
+    likeComentario: (id) => {
+        return apiRequest(`/api/comentarios/${id}/like`, { method: 'POST' });
     }
 };
-
-function leerLikes(id) {
-    const todos = JSON.parse(localStorage.getItem('likes_comentarios') || '{}');
-    const lista = todos[id] || [];
-    return { total: lista.length, likedByMe: lista.includes(localStorage.getItem('usuarioId')) };
-}

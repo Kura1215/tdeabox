@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { API_URL } from '../api';
+import { api, API_URL } from '../api';
 import { obtenerClaseCategoria, formatearFecha } from '../utils';
 
 const LIMITE_SNIPPET = 200;
 
 // tarjeta de un post para las listas del feed y del perfil
 export default function PostCard({ post, onEliminar }) {
+    const [likes, setLikes] = useState({ likes: post.likes, likedByMe: post.likedByMe });
     const badgeClass = obtenerClaseCategoria(post.categoriaId);
 
     let snippet = post.contenido;
@@ -21,8 +23,7 @@ export default function PostCard({ post, onEliminar }) {
                 <div>
                     {!onEliminar && (
                         <>Publicado por{' '}
-                            <Link to={`/usuario/${post.usuarioId}`}
-                                state={{ nombre: post.nombreUsuario, username: post.usernameUsuario, fotoPerfil: post.fotoPerfilUsuario }}>
+                            <Link to={`/usuario/${post.usuarioId}`}>
                                 <strong>{post.nombreUsuario || post.usernameUsuario}</strong>
                             </Link> (@{post.usernameUsuario}) el {formatearFecha(post.fechaCreacion)} en </>
                     )}
@@ -44,11 +45,15 @@ export default function PostCard({ post, onEliminar }) {
                 </div>
             )}
 
-            {!onEliminar && (
-                <div style={{ marginTop: '10px', textAlign: 'right' }}>
+            <div style={{ marginTop: '10px', textAlign: 'right' }}>
+                <button className={`btn btn-sm ${likes.likedByMe ? 'btn-primary' : ''}`} style={{ marginRight: '6px' }}
+                    onClick={() => api.likePost(post.id).then(setLikes).catch(() => {})}>
+                    ♥ {likes.likes}
+                </button>
+                {!onEliminar && (
                     <Link to={`/post/${post.id}`} className="btn btn-primary btn-sm">Ver Publicacion / Comentar</Link>
-                </div>
-            )}
+                )}
+            </div>
         </article>
     );
 }

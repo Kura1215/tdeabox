@@ -38,6 +38,15 @@ export default function Post() {
         }
     }
 
+    async function handleLikePost() {
+        try {
+            const res = await api.likePost(id);
+            setPost({ ...post, ...res });
+        } catch (error) {
+            setAlerta({ mensaje: error.message || 'No se pudo registrar el like.', tipo: 'error' });
+        }
+    }
+
     async function handleEnviarComentario(e) {
         e.preventDefault();
         setAlerta({ mensaje: '', tipo: '' });
@@ -118,8 +127,7 @@ export default function Post() {
                                 <h2>{post.titulo}</h2>
                                 <div className="post-meta" style={{ borderBottom: '1px solid var(--gris-claro)', paddingBottom: '8px' }}>
                                     Publicado por{' '}
-                                    <Link to={`/usuario/${post.usuarioId}`}
-                                        state={{ nombre: post.nombreUsuario, username: post.usernameUsuario, fotoPerfil: post.fotoPerfilUsuario }}>
+                                    <Link to={`/usuario/${post.usuarioId}`}>
                                         <strong>{post.nombreUsuario || post.usernameUsuario}</strong>
                                     </Link> (@{post.usernameUsuario}) el {formatearFecha(post.fechaCreacion)} en{' '}
                                     <span className={`badge ${obtenerClaseCategoria(post.categoriaId)}`}>{post.nombreCategoria}</span>
@@ -127,6 +135,10 @@ export default function Post() {
                                 <div style={{ fontSize: '14px', lineHeight: 1.6, margin: '14px 0', whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif' }}>
                                     {post.contenido}
                                 </div>
+
+                                <button className={`btn btn-sm ${post.likedByMe ? 'btn-primary' : ''}`} onClick={handleLikePost}>
+                                    ♥ {post.likes}
+                                </button>
 
                                 {post.imagenUrl && (
                                     <div style={{ textAlign: 'center', marginTop: '12px' }}>

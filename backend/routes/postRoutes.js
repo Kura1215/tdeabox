@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const requireAuth = require('../middleware/auth');
 const { upload, eliminarImagen } = require('../middleware/upload');
+const { agregarLikes, toggleLike } = require('../utils/likes');
 
 const router = express.Router();
 
@@ -48,27 +49,32 @@ router.get('/categorias', async (req, res) => {
     res.json(rows);
 });
 
-router.get('/posts', async (req, res) => {
+router.get('/posts', requireAuth.opcional, async (req, res) => {
     const { categoria, buscar } = req.query;
 
-    let sql = SELECT_POST;
+    const filtros = [];
     const params = [];
 
     if (categoria) {
-        sql += ' WHERE p.categoria_id = ?';
+        filtros.push('p.categoria_id = ?');
         params.push(categoria);
-    } else if (buscar && buscar.trim() !== '') {
-        sql += ' WHERE p.titulo LIKE ?';
-        params.push(`%${buscar}%`);
+    }
+    if (buscar && buscar.trim() !== '') {
+        filtros.push('p.titulo LIKE ?');
+        params.push(`%${buscar.trim()}%`);
     }
 
+    let sql = SELECT_POST;
+    if (filtros.length > 0) sql += ' WHERE ' + filtros.join(' AND ');
     sql += ' ORDER BY p.fecha_creacion DESC';
 
     const [rows] = await pool.query(sql, params);
-    res.json(rows.map(mapearPost));
+    const posts = rows.map(mapearPost);
+    await agregarLikes('post_likes', 'post_id', posts, req.correo);
+    res.json(posts);
 });
 
-router.get('/posts/:id', async (req, res) => {
+router.get('/posts/:id', requireAuth.opcional, async (req, res) => {
     const { id } = req.params;
 
     const [rows] = await pool.query(`${SELECT_POST} WHERE p.id = ?`, [id]);
@@ -88,7 +94,20 @@ router.get('/posts/:id', async (req, res) => {
     `, [id]);
 
     post.comentarios = comentarios.map(mapearComentario);
+    await agregarLikes('post_likes', 'post_id', [post], req.correo);
+    await agregarLikes('comentario_likes', 'comentario_id', post.comentarios, req.correo);
     res.json(post);
+});
+
+router.post('/posts/:id/like', requireAuth, async (req, res) => {
+    try {
+        const [posts] = await pool.query('SELECT id FROM posts WHERE id = ?', [req.params.id]);
+        if (posts.length === 0) return res.status(404).json({ error: 'Post no encontrado' });
+
+        res.json(await toggleLike('post_likes', 'post_id', req.params.id, req.correo));
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
 });
 
 router.post('/posts', requireAuth, upload.single('imagen'), async (req, res) => {
@@ -109,7 +128,9 @@ router.post('/posts', requireAuth, upload.single('imagen'), async (req, res) => 
         );
 
         const [rows] = await pool.query(`${SELECT_POST} WHERE p.id = ?`, [resultado.insertId]);
-        res.json(mapearPost(rows[0]));
+        const nuevo = mapearPost(rows[0]);
+        await agregarLikes('post_likes', 'post_id', [nuevo], req.correo);
+        res.json(nuevo);
     } catch (error) {
         res.status(400).json({ error: error.message });
     }

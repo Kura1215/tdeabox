@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const requireAuth = require('../middleware/auth');
 const { upload, eliminarImagen } = require('../middleware/upload');
+const { toggleLike } = require('../utils/likes');
 
 const router = express.Router();
 
@@ -41,8 +42,21 @@ router.post('/posts/:id/comentarios', requireAuth, upload.single('imagen'), asyn
             usuarioId: c.usuario_id,
             nombreUsuario: c.nombre_usuario,
             usernameUsuario: c.username_usuario,
-            fotoPerfilUsuario: c.foto_usuario || ''
+            fotoPerfilUsuario: c.foto_usuario || '',
+            likes: 0,
+            likedByMe: false
         });
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+router.post('/comentarios/:id/like', requireAuth, async (req, res) => {
+    try {
+        const [comentarios] = await pool.query('SELECT id FROM comentarios WHERE id = ?', [req.params.id]);
+        if (comentarios.length === 0) return res.status(404).json({ error: 'Comentario no encontrado' });
+
+        res.json(await toggleLike('comentario_likes', 'comentario_id', req.params.id, req.correo));
     } catch (error) {
         res.status(400).json({ error: error.message });
     }

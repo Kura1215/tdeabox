@@ -40,6 +40,22 @@ CREATE TABLE IF NOT EXISTS comentarios (
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS post_likes (
+    post_id INT NOT NULL,
+    usuario_id INT NOT NULL,
+    PRIMARY KEY (post_id, usuario_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS comentario_likes (
+    comentario_id INT NOT NULL,
+    usuario_id INT NOT NULL,
+    PRIMARY KEY (comentario_id, usuario_id),
+    FOREIGN KEY (comentario_id) REFERENCES comentarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
 -- Categorias iniciales si la tabla esta vacia
 INSERT INTO categorias (id, nombre, descripcion) VALUES
 (1, 'Objetos Perdidos', 'Reporta o busca objetos perdidos en el campus'),

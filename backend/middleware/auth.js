@@ -19,4 +19,17 @@ function requireAuth(req, res, next) {
     }
 }
 
+// igual que requireAuth pero sin bloquear: si hay token valido deja el correo, si no sigue de largo
+requireAuth.opcional = function (req, res, next) {
+    const header = req.headers['authorization'];
+    if (header && header.startsWith('Bearer ')) {
+        try {
+            req.correo = verificarToken(header.substring(7)).sub;
+        } catch (error) {
+            // token invalido: se trata como visitante
+        }
+    }
+    next();
+};
+
 module.exports = requireAuth;
