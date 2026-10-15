@@ -6,6 +6,8 @@ import { obtenerClaseCategoria, formatearFecha } from '../utils';
 import Navbar from '../components/Navbar';
 import SidebarPerfil from '../components/SidebarPerfil';
 import ComentarioItem from '../components/ComentarioItem';
+import AutorPost from '../components/AutorPost';
+import Reportar from '../components/Reportar';
 import Alerta from '../components/Alerta';
 
 export default function Post() {
@@ -15,6 +17,7 @@ export default function Post() {
 
     const [post, setPost] = useState(null);
     const [comentarios, setComentarios] = useState([]);
+    const [paginacion, setPaginacion] = useState({ page: 1, paginas: 1 });
     const [noEncontrado, setNoEncontrado] = useState(false);
     const [comentarioTexto, setComentarioTexto] = useState('');
     const [comentarioImagen, setComentarioImagen] = useState(null);
@@ -31,10 +34,34 @@ export default function Post() {
         try {
             const data = await api.verPost(id);
             setPost(data);
-            setComentarios(data.comentarios || []);
+            await cargarComentarios(1, true);
         } catch (error) {
             setNoEncontrado(true);
             setAlerta({ mensaje: 'No se pudo encontrar la publicacion especificada.', tipo: 'error' });
+        }
+    }
+
+    // reemplaza (reiniciar) o agrega la pagina siguiente de comentarios
+    async function cargarComentarios(page, reiniciar) {
+        const data = await api.listarComentarios(id, page);
+        setComentarios((prev) => (reiniciar ? data.comentarios : [...prev, ...data.comentarios]));
+        setPaginacion(data.paginacion);
+    }
+
+    async function recargarComentarios() {
+        try {
+            // mantiene todas las paginas ya cargadas
+            const hasta = paginacion.page;
+            let todos = [];
+            for (let p = 1; p <= hasta; p++) {
+                const data = await api.listarComentarios(id, p);
+                todos = todos.concat(data.comentarios);
+                setPaginacion(data.paginacion);
+            }
+            setComentarios(todos);
+            setPost(await api.verPost(id));
+        } catch (error) {
+            setAlerta({ mensaje: error.message, tipo: 'error' });
         }
     }
 
@@ -44,6 +71,25 @@ export default function Post() {
             setPost({ ...post, ...res });
         } catch (error) {
             setAlerta({ mensaje: error.message || 'No se pudo registrar el like.', tipo: 'error' });
+        }
+    }
+
+    async function handleGuardar() {
+        try {
+            const res = await api.guardarPost(id);
+            setPost({ ...post, guardado: res.guardado });
+        } catch (error) {
+            setAlerta({ mensaje: error.message, tipo: 'error' });
+        }
+    }
+
+    async function handleEliminarPost() {
+        if (!confirm('¿Eliminar esta publicacion? Se borraran tambien sus comentarios.')) return;
+        try {
+            await api.eliminarPost(id);
+            navigate('/feed');
+        } catch (error) {
+            setAlerta({ mensaje: error.message, tipo: 'error' });
         }
     }
 
@@ -86,11 +132,13 @@ export default function Post() {
             setAlerta({ mensaje: '', tipo: '' });
             await api.eliminarComentario(comentarioId);
             setAlerta({ mensaje: 'Comentario eliminado correctamente.', tipo: 'ok' });
-            await cargarDetalle();
+            await recargarComentarios();
         } catch (error) {
             setAlerta({ mensaje: error.message || 'No se pudo eliminar el comentario.', tipo: 'error' });
         }
     }
+
+    const puedeEliminar = post && (post.esMio || usuario?.rol === 'admin');
 
     return (
         <>
@@ -126,19 +174,36 @@ export default function Post() {
                             <>
                                 <h2>{post.titulo}</h2>
                                 <div className="post-meta" style={{ borderBottom: '1px solid var(--gris-claro)', paddingBottom: '8px' }}>
-                                    Publicado por{' '}
-                                    <Link to={`/usuario/${post.usuarioId}`}>
-                                        <strong>{post.nombreUsuario || post.usernameUsuario}</strong>
-                                    </Link> (@{post.usernameUsuario}) el {formatearFecha(post.fechaCreacion)} en{' '}
+                                    Publicado por <AutorPost item={post} /> el {formatearFecha(post.fechaCreacion)} en{' '}
                                     <span className={`badge ${obtenerClaseCategoria(post.categoriaId)}`}>{post.nombreCategoria}</span>
+                                    {post.editado && <span className="marca-editado"> · editado el {formatearFecha(post.editadoAt)}</span>}
                                 </div>
+
+                                {post.tags.length > 0 && (
+                                    <div className="tags" style={{ marginTop: '8px' }}>
+                                        {post.tags.map((t) => <Link key={t} to={`/feed?tag=${encodeURIComponent(t)}`} className="tag">#{t}</Link>)}
+                                    </div>
+                                )}
+
                                 <div style={{ fontSize: '14px', lineHeight: 1.6, margin: '14px 0', whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif' }}>
                                     {post.contenido}
                                 </div>
 
-                                <button className={`btn btn-sm ${post.likedByMe ? 'btn-primary' : ''}`} onClick={handleLikePost}>
-                                    ♥ {post.likes}
-                                </button>
+                                <div className="acciones-post">
+                                    <button className={`btn btn-sm ${post.likedByMe ? 'btn-primary' : 'btn-secundario'}`} onClick={handleLikePost}>
+                                        ♥ {post.likes}
+                                    </button>
+                                    <button className={`btn btn-sm ${post.guardado ? 'btn-primary' : 'btn-secundario'}`} onClick={handleGuardar}>
+                                        {post.guardado ? '★ Guardado' : '☆ Guardar'}
+                                    </button>
+                                    {post.esMio && (
+                                        <Link to={`/editar-post/${post.id}`} className="btn btn-sm btn-secundario">Editar</Link>
+                                    )}
+                                    {puedeEliminar && (
+                                        <button className="btn btn-sm btn-danger" onClick={handleEliminarPost}>Eliminar</button>
+                                    )}
+                                    {!post.esMio && <Reportar tipo="post" id={post.id} />}
+                                </div>
 
                                 {post.imagenUrl && (
                                     <div style={{ textAlign: 'center', marginTop: '12px' }}>
@@ -159,8 +224,16 @@ export default function Post() {
                             )}
 
                             {comentarios.map((com) => (
-                                <ComentarioItem key={com.id} comentario={com} onEliminar={handleEliminarComentario} />
+                                <ComentarioItem key={com.id} comentario={com} onEliminar={handleEliminarComentario} onCambio={recargarComentarios} />
                             ))}
+
+                            {paginacion.page < paginacion.paginas && (
+                                <div style={{ textAlign: 'center', padding: '10px' }}>
+                                    <button className="btn btn-sm btn-primary" onClick={() => cargarComentarios(paginacion.page + 1, false)}>
+                                        Cargar mas comentarios
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -169,13 +242,14 @@ export default function Post() {
                         <div className="box-body">
                             <form onSubmit={handleEnviarComentario}>
                                 <div className="form-group">
-                                    <label htmlFor="comment-text">Escribe tu comentario</label>
-                                    <textarea id="comment-text" rows="3" placeholder="Aporta a la discusion o responde dudas..."
+                                    <label htmlFor="comment-text">Escribe tu comentario (puedes mencionar con @usuario)</label>
+                                    <textarea id="comment-text" rows="3" maxLength={500} placeholder="Aporta a la discusion o responde dudas..."
                                         value={comentarioTexto} onChange={(e) => setComentarioTexto(e.target.value)} required />
+                                    <small className="ayuda">{comentarioTexto.length}/500</small>
                                 </div>
                                 <div className="form-group">
-                                    <label htmlFor="comment-image">Adjuntar Imagen (Opcional)</label>
-                                    <input type="file" id="comment-image" accept="image/*" ref={inputImagenRef}
+                                    <label htmlFor="comment-image">Adjuntar Imagen (Opcional, JPG/PNG/WEBP, max. 3 MB)</label>
+                                    <input type="file" id="comment-image" accept="image/jpeg,image/png,image/webp" ref={inputImagenRef}
                                         onChange={(e) => setComentarioImagen(e.target.files[0] || null)} />
                                 </div>
                                 <button type="submit" className="btn btn-primary" style={{ marginTop: '6px' }} disabled={enviando}>

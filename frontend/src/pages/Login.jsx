@@ -18,6 +18,7 @@ export default function Login() {
     const [regCorreo, setRegCorreo] = useState('');
     const [regPassword, setRegPassword] = useState('');
     const [regConfirmPassword, setRegConfirmPassword] = useState('');
+    const [regFoto, setRegFoto] = useState(null);
 
     function cambiarARegistro(e) {
         e.preventDefault();
@@ -43,7 +44,7 @@ export default function Login() {
         try {
             const data = await api.login(loginCorreo, loginPassword);
             setAlerta({ mensaje: '¡Inicio de sesion exitoso! Redirigiendo...', tipo: 'ok' });
-            login(data.token, data.usuarioId, data.nombre, data.username, data.fotoPerfil);
+            login(data.token, data.usuarioId, data.nombre, data.username, data.fotoPerfil, data.rol);
 
             setTimeout(() => {
                 navigate('/feed');
@@ -62,8 +63,13 @@ export default function Login() {
             return;
         }
 
-        if (regPassword.length < 6) {
-            setAlerta({ mensaje: 'La contraseña debe tener al menos 6 caracteres.', tipo: 'error' });
+        if (regPassword.length < 8 || regPassword.length > 20) {
+            setAlerta({ mensaje: 'La contraseña debe tener entre 8 y 20 caracteres.', tipo: 'error' });
+            return;
+        }
+
+        if (!/^[a-zA-Z0-9_]{3,30}$/.test(regUsername)) {
+            setAlerta({ mensaje: 'El usuario debe tener 3-30 caracteres: letras, numeros o guion bajo.', tipo: 'error' });
             return;
         }
 
@@ -72,19 +78,23 @@ export default function Login() {
             return;
         }
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(regCorreo)) {
-            setAlerta({ mensaje: 'Por favor, ingresa un correo electronico valido.', tipo: 'error' });
+        if (!/^[^\s@]+@tdea\.edu\.co$/i.test(regCorreo.trim())) {
+            setAlerta({ mensaje: 'Solo se permiten correos institucionales @tdea.edu.co.', tipo: 'error' });
             return;
         }
 
         try {
-            await api.register(regNombre, regUsername, regCorreo, regPassword);
+            const formData = new FormData();
+            formData.append('nombre', regNombre);
+            formData.append('username', regUsername);
+            formData.append('correo', regCorreo);
+            formData.append('password', regPassword);
+            if (regFoto) formData.append('foto', regFoto);
 
-            // al registrarse iniciamos sesion automaticamente con las mismas credenciales
-            const data = await api.login(regCorreo, regPassword);
+            // el registro ya devuelve el token: queda con la sesion iniciada
+            const data = await api.register(formData);
             setAlerta({ mensaje: '¡Registro exitoso! Redirigiendo...', tipo: 'ok' });
-            login(data.token, data.usuarioId, data.nombre, data.username, data.fotoPerfil);
+            login(data.token, data.usuarioId, data.nombre, data.username, data.fotoPerfil, data.rol);
 
             setTimeout(() => {
                 navigate('/feed');
@@ -119,7 +129,7 @@ export default function Login() {
                                 <form onSubmit={handleLogin}>
                                     <div className="form-group">
                                         <label htmlFor="login-correo">Correo Institucional</label>
-                                        <input type="email" id="login-correo" placeholder="ejemplo@correo.tdea.edu.co"
+                                        <input type="email" id="login-correo" placeholder="usuario@tdea.edu.co"
                                             value={loginCorreo} onChange={(e) => setLoginCorreo(e.target.value)} required />
                                     </div>
                                     <div className="form-group">
@@ -145,28 +155,33 @@ export default function Login() {
                                 <form onSubmit={handleRegister}>
                                     <div className="form-group">
                                         <label htmlFor="reg-nombre">Nombre Completo</label>
-                                        <input type="text" id="reg-nombre" placeholder="Juan Perez"
+                                        <input type="text" id="reg-nombre" placeholder="Juan Perez" maxLength={100}
                                             value={regNombre} onChange={(e) => setRegNombre(e.target.value)} required />
                                     </div>
                                     <div className="form-group">
                                         <label htmlFor="reg-username">Nombre de Usuario (Apodo)</label>
-                                        <input type="text" id="reg-username" placeholder="juan_tdea"
+                                        <input type="text" id="reg-username" placeholder="juan_tdea" maxLength={30}
                                             value={regUsername} onChange={(e) => setRegUsername(e.target.value)} required />
                                     </div>
                                     <div className="form-group">
                                         <label htmlFor="reg-correo">Correo Institucional</label>
-                                        <input type="email" id="reg-correo" placeholder="usuario@correo.tdea.edu.co"
+                                        <input type="email" id="reg-correo" placeholder="usuario@tdea.edu.co"
                                             value={regCorreo} onChange={(e) => setRegCorreo(e.target.value)} required />
                                     </div>
                                     <div className="form-group">
                                         <label htmlFor="reg-password">Contraseña</label>
-                                        <input type="password" id="reg-password" placeholder="Minimo 6 caracteres"
+                                        <input type="password" id="reg-password" placeholder="Entre 8 y 20 caracteres" minLength={8} maxLength={20}
                                             value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
                                     </div>
                                     <div className="form-group">
                                         <label htmlFor="reg-confirm-password">Confirmar Contraseña</label>
                                         <input type="password" id="reg-confirm-password" placeholder="Repite tu contraseña"
                                             value={regConfirmPassword} onChange={(e) => setRegConfirmPassword(e.target.value)} required />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="reg-foto">Foto de perfil (opcional, JPG/PNG/WEBP, max. 2 MB)</label>
+                                        <input type="file" id="reg-foto" accept="image/jpeg,image/png,image/webp"
+                                            onChange={(e) => setRegFoto(e.target.files[0] || null)} />
                                     </div>
                                     <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }}>
                                         Crear Cuenta

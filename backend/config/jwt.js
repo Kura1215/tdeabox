@@ -1,9 +1,10 @@
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
 
-function generarToken(correo) {
-    return jwt.sign({ sub: correo }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRATION
+// la sesion dura 7 dias (RF01)
+function generarToken(usuarioId) {
+    return jwt.sign({ sub: String(usuarioId) }, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRATION || '7d'
     });
 }
 

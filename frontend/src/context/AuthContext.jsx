@@ -11,21 +11,23 @@ function leerUsuarioGuardado() {
         usuarioId: localStorage.getItem('usuarioId'),
         nombre: localStorage.getItem('nombre'),
         username: localStorage.getItem('username'),
-        fotoPerfil: localStorage.getItem('fotoPerfil')
+        fotoPerfil: localStorage.getItem('fotoPerfil'),
+        rol: localStorage.getItem('rol') || 'usuario'
     };
 }
 
 export function AuthProvider({ children }) {
     const [usuario, setUsuario] = useState(leerUsuarioGuardado());
 
-    function login(token, usuarioId, nombre, username, fotoPerfil) {
+    function login(token, usuarioId, nombre, username, fotoPerfil, rol = 'usuario') {
         localStorage.setItem('token', token);
         localStorage.setItem('usuarioId', usuarioId);
         localStorage.setItem('nombre', nombre);
         localStorage.setItem('username', username);
         localStorage.setItem('fotoPerfil', fotoPerfil || '');
+        localStorage.setItem('rol', rol);
 
-        setUsuario({ token, usuarioId, nombre, username, fotoPerfil });
+        setUsuario({ token, usuarioId, nombre, username, fotoPerfil, rol });
     }
 
     function actualizarPerfil(nombre, fotoPerfil) {
@@ -35,7 +37,8 @@ export function AuthProvider({ children }) {
     }
 
     function logout() {
-        localStorage.clear();
+        // se conserva el tema elegido
+        ['token', 'usuarioId', 'nombre', 'username', 'fotoPerfil', 'rol'].forEach((k) => localStorage.removeItem(k));
         setUsuario(null);
     }
 

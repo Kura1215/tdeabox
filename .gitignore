@@ -23,6 +23,6 @@ Thumbs.db
 # Logs
 *.log
 
-# Documentación y capturas
-*.md
+# Capturas y copias de seguridad
 capturas/
+backups/

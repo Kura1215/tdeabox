@@ -1,199 +1,283 @@
 const express = require('express');
 const pool = require('../db');
 const requireAuth = require('../middleware/auth');
-const { upload, eliminarImagen } = require('../middleware/upload');
-const { agregarLikes, toggleLike } = require('../utils/likes');
+const { subir, eliminarImagen } = require('../middleware/upload');
+const { toggleLike } = require('../utils/likes');
+const { ErrorHttp, asyncHandler, ignorarDuplicado, reintentarDeadlock } = require('../utils/errores');
+const v = require('../utils/validar');
+const { crearNotificacion, notificarMenciones } = require('../services/notificaciones');
+const { eliminarPost } = require('../services/contenido');
+const { auditar } = require('../services/auditoria');
+const { SELECT_POST, serializarPosts, obtenerPost, resolverTags, conTransaccion } = require('../services/posts');
 
 const router = express.Router();
 
-const SELECT_POST = `
-    SELECT p.id, p.titulo, p.contenido, p.imagen_url, p.fecha_creacion,
-           u.id AS usuario_id, u.nombre AS nombre_usuario, u.username AS username_usuario, u.foto_perfil AS foto_usuario,
-           c.id AS categoria_id, c.nombre AS nombre_categoria
-    FROM posts p
-    JOIN usuarios u ON u.id = p.usuario_id
-    JOIN categorias c ON c.id = p.categoria_id
-`;
+const REGEX_FECHA = /^\d{4}-\d{2}-\d{2}$/;
+const TOPE_CONTEO = 5000;
+const TTL_RANKING_MS = 60 * 1000;
+let cacheRanking = { ids: [], hasta: 0 };
+let calculoRanking = null;
 
-function mapearPost(row) {
-    return {
-        id: row.id,
-        titulo: row.titulo,
-        contenido: row.contenido,
-        imagenUrl: row.imagen_url || '',
-        fechaCreacion: row.fecha_creacion,
-        usuarioId: row.usuario_id,
-        nombreUsuario: row.nombre_usuario,
-        usernameUsuario: row.username_usuario,
-        fotoPerfilUsuario: row.foto_usuario || '',
-        categoriaId: row.categoria_id,
-        nombreCategoria: row.nombre_categoria
-    };
+function fechaQuery(valor, campo) {
+    if (valor === undefined || valor === '') return null;
+    if (typeof valor !== 'string' || !REGEX_FECHA.test(valor) || Number.isNaN(Date.parse(valor))) {
+        throw new ErrorHttp(400, `${campo} debe tener formato AAAA-MM-DD`);
+    }
+    return valor;
 }
 
-function mapearComentario(row) {
-    return {
-        id: row.id,
-        contenido: row.contenido,
-        imagenUrl: row.imagen_url || '',
-        fechaCreacion: row.fecha_creacion,
-        usuarioId: row.usuario_id,
-        nombreUsuario: row.nombre_usuario,
-        usernameUsuario: row.username_usuario,
-        fotoPerfilUsuario: row.foto_usuario || ''
-    };
+// Arma el texto de busqueda: FULLTEXT cuando todas las palabras tienen 3+ letras (minimo del indice
+// InnoDB) y LIKE en caso contrario.
+function filtroTexto(q, filtros, params) {
+    const palabras = q.split(/\s+/)
+        .map((p) => p.replace(/[^\p{L}\p{N}_]/gu, ''))
+        .filter(Boolean);
+    if (palabras.length === 0) return;
+
+    if (palabras.every((p) => p.length >= 3)) {
+        filtros.push('MATCH(p.titulo, p.contenido) AGAINST (? IN BOOLEAN MODE)');
+        params.push(palabras.map((p) => `+${p}*`).join(' '));
+    } else {
+        const patron = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+        filtros.push('(p.titulo LIKE ? OR p.contenido LIKE ?)');
+        params.push(patron, patron);
+    }
 }
 
-router.get('/categorias', async (req, res) => {
-    const [rows] = await pool.query('SELECT id, nombre, descripcion FROM categorias');
+router.get('/categorias', asyncHandler(async (req, res) => {
+    const [rows] = await pool.query('SELECT id, nombre, descripcion FROM categorias ORDER BY id');
     res.json(rows);
-});
+}));
 
-router.get('/posts', requireAuth.opcional, async (req, res) => {
-    const { categoria, buscar } = req.query;
+// Feed paginado con filtros combinables
+router.get('/posts', requireAuth.opcional, asyncHandler(async (req, res) => {
+    const { page, limit, offset } = v.paginacion(req.query);
+    const { categoria, tag, autor, q, siguiendo } = req.query;
+    const desde = fechaQuery(req.query.desde, 'desde');
+    const hasta = fechaQuery(req.query.hasta, 'hasta');
 
     const filtros = [];
     const params = [];
 
     if (categoria) {
         filtros.push('p.categoria_id = ?');
-        params.push(categoria);
+        params.push(v.entero(categoria, 'categoria'));
     }
-    if (buscar && buscar.trim() !== '') {
-        filtros.push('p.titulo LIKE ?');
-        params.push(`%${buscar.trim()}%`);
+    if (tag) {
+        filtros.push(`EXISTS (SELECT 1 FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
+                              WHERE pt.post_id = p.id AND t.nombre = ?)`);
+        params.push(String(tag).trim().replace(/^#/, '').toLowerCase());
+    }
+    if (autor) {
+        // los posts anonimos nunca aparecen al filtrar por autor (revelaria quien los escribio)
+        filtros.push('p.es_anonimo = 0 AND (u.username = ? OR u.id = ?)');
+        params.push(String(autor).trim(), Number(autor) || 0);
+    }
+    if (q) {
+        filtroTexto(v.texto(q, 'La busqueda', { max: 100 }), filtros, params);
+    }
+    if (desde) {
+        filtros.push('p.fecha_creacion >= ?');
+        params.push(desde);
+    }
+    if (hasta) {
+        filtros.push('p.fecha_creacion < DATE_ADD(?, INTERVAL 1 DAY)');
+        params.push(hasta);
+    }
+    if (v.booleano(siguiendo)) {
+        if (!req.usuario) throw new ErrorHttp(401, 'Inicia sesión para ver las publicaciones de quienes sigues');
+        // sin anonimos: mostrarlos aqui revelaria que la persona seguida los escribio
+        filtros.push('p.es_anonimo = 0 AND p.usuario_id IN (SELECT seguido_id FROM seguidores WHERE seguidor_id = ?)');
+        params.push(req.usuario.id);
     }
 
-    let sql = SELECT_POST;
-    if (filtros.length > 0) sql += ' WHERE ' + filtros.join(' AND ');
-    sql += ' ORDER BY p.fecha_creacion DESC';
+    const where = filtros.length > 0 ? ' WHERE ' + filtros.join(' AND ') : '';
 
-    const [rows] = await pool.query(sql, params);
-    const posts = rows.map(mapearPost);
-    await agregarLikes('post_likes', 'post_id', posts, req.correo);
-    res.json(posts);
-});
+    // el total se acota a TOPE_CONTEO para que contar no recorra millones de filas
+    const [[{ total }]] = await pool.query(
+        `SELECT COUNT(*) AS total FROM (SELECT 1 FROM posts p JOIN usuarios u ON u.id = p.usuario_id${where} LIMIT ${TOPE_CONTEO}) t`,
+        params);
+    const [rows] = await pool.query(
+        `${SELECT_POST}${where} ORDER BY p.fecha_creacion DESC, p.id DESC LIMIT ? OFFSET ?`,
+        [...params, limit, offset]);
 
-router.get('/posts/:id', requireAuth.opcional, async (req, res) => {
-    const { id } = req.params;
+    res.json({
+        exito: true,
+        posts: await serializarPosts(rows, req.usuario),
+        paginacion: { page, limit, total, paginas: Math.ceil(total / limit) }
+    });
+}));
 
-    const [rows] = await pool.query(`${SELECT_POST} WHERE p.id = ?`, [id]);
-    if (rows.length === 0) {
-        return res.status(404).json({ error: 'Post no encontrado' });
-    }
+// Ranking semanal: posts de los ultimos 7 dias por likes, y comentarios como desempate.
+// El orden (solo ids) se guarda 60 s en memoria: es igual para todos y calcularlo es lo mas caro del endpoint;
+// los datos de cada post (likes, guardado, anonimato) se leen frescos.
+router.get('/posts/ranking-semanal', requireAuth.opcional, asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 20);
 
-    const post = mapearPost(rows[0]);
-
-    const [comentarios] = await pool.query(`
-        SELECT co.id, co.contenido, co.imagen_url, co.fecha_creacion,
-               u.id AS usuario_id, u.nombre AS nombre_usuario, u.username AS username_usuario, u.foto_perfil AS foto_usuario
-        FROM comentarios co
-        JOIN usuarios u ON u.id = co.usuario_id
-        WHERE co.post_id = ?
-        ORDER BY co.fecha_creacion ASC
-    `, [id]);
-
-    post.comentarios = comentarios.map(mapearComentario);
-    await agregarLikes('post_likes', 'post_id', [post], req.correo);
-    await agregarLikes('comentario_likes', 'comentario_id', post.comentarios, req.correo);
-    res.json(post);
-});
-
-router.post('/posts/:id/like', requireAuth, async (req, res) => {
-    try {
-        const [posts] = await pool.query('SELECT id FROM posts WHERE id = ?', [req.params.id]);
-        if (posts.length === 0) return res.status(404).json({ error: 'Post no encontrado' });
-
-        res.json(await toggleLike('post_likes', 'post_id', req.params.id, req.correo));
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
-});
-
-router.post('/posts', requireAuth, upload.single('imagen'), async (req, res) => {
-    const { titulo, contenido, categoriaId } = req.body;
-
-    try {
-        const [usuarios] = await pool.query('SELECT id FROM usuarios WHERE correo = ?', [req.correo]);
-        if (usuarios.length === 0) throw new Error('Usuario no encontrado');
-
-        const [categorias] = await pool.query('SELECT id FROM categorias WHERE id = ?', [categoriaId]);
-        if (categorias.length === 0) throw new Error('Categoría no encontrada');
-
-        const imagenUrl = req.file ? `/uploads/${req.file.filename}` : null;
-
-        const [resultado] = await pool.query(
-            'INSERT INTO posts (titulo, contenido, imagen_url, usuario_id, categoria_id) VALUES (?, ?, ?, ?, ?)',
-            [titulo, contenido, imagenUrl, usuarios[0].id, categoriaId]
-        );
-
-        const [rows] = await pool.query(`${SELECT_POST} WHERE p.id = ?`, [resultado.insertId]);
-        const nuevo = mapearPost(rows[0]);
-        await agregarLikes('post_likes', 'post_id', [nuevo], req.correo);
-        res.json(nuevo);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
-});
-
-router.put('/posts/:id', requireAuth, upload.single('imagen'), async (req, res) => {
-    const { id } = req.params;
-    const { titulo, contenido } = req.body;
-
-    try {
-        const [rows] = await pool.query(`
-            SELECT p.*, u.correo AS autor_correo FROM posts p
-            JOIN usuarios u ON u.id = p.usuario_id WHERE p.id = ?
-        `, [id]);
-
-        if (rows.length === 0) throw new Error('Post no encontrado');
-        const post = rows[0];
-
-        if (post.autor_correo !== req.correo) {
-            throw new Error('No tienes permiso para editar este post');
+    if (Date.now() > cacheRanking.hasta) {
+        // si llegan muchas peticiones con la cache vencida, todas esperan un unico calculo
+        if (!calculoRanking) {
+            calculoRanking = pool.query(
+                `SELECT p.id FROM posts p
+                 WHERE p.fecha_creacion >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                 ORDER BY (SELECT COUNT(*) FROM post_likes l WHERE l.post_id = p.id) DESC,
+                          (SELECT COUNT(*) FROM comentarios co WHERE co.post_id = p.id) DESC,
+                          p.fecha_creacion DESC
+                 LIMIT 20`)
+                .then(([ids]) => {
+                    cacheRanking = { ids: ids.map((r) => r.id), hasta: Date.now() + (process.env.NODE_ENV === 'test' ? 0 : TTL_RANKING_MS) };
+                })
+                .finally(() => { calculoRanking = null; });
         }
-
-        let imagenUrl = post.imagen_url;
-        if (req.file) {
-            if (imagenUrl) eliminarImagen(imagenUrl);
-            imagenUrl = `/uploads/${req.file.filename}`;
-        }
-
-        await pool.query(
-            'UPDATE posts SET titulo = ?, contenido = ?, imagen_url = ? WHERE id = ?',
-            [titulo, contenido, imagenUrl, id]
-        );
-
-        const [actualizado] = await pool.query(`${SELECT_POST} WHERE p.id = ?`, [id]);
-        res.json(mapearPost(actualizado[0]));
-    } catch (error) {
-        res.status(400).json({ error: error.message });
+        await calculoRanking;
     }
-});
 
-router.delete('/posts/:id', requireAuth, async (req, res) => {
-    const { id } = req.params;
+    const ids = cacheRanking.ids.slice(0, limit);
+    if (ids.length === 0) return res.json({ exito: true, posts: [] });
 
-    try {
-        const [rows] = await pool.query(`
-            SELECT p.*, u.correo AS autor_correo FROM posts p
-            JOIN usuarios u ON u.id = p.usuario_id WHERE p.id = ?
-        `, [id]);
+    const [rows] = await pool.query(`${SELECT_POST} WHERE p.id IN (?)`, [ids]);
+    // los posts borrados desde que se calculo el orden simplemente desaparecen de la lista
+    rows.sort((x, y) => ids.indexOf(x.id) - ids.indexOf(y.id));
+    res.json({ exito: true, posts: await serializarPosts(rows, req.usuario) });
+}));
 
-        if (rows.length === 0) throw new Error('Post no encontrado');
-        const post = rows[0];
+router.get('/posts/:id', requireAuth.opcional, asyncHandler(async (req, res) => {
+    res.json(await obtenerPost(v.entero(req.params.id, 'El id'), req.usuario));
+}));
 
-        if (post.autor_correo !== req.correo) {
-            throw new Error('No tienes permiso para eliminar este post');
+router.post('/posts', requireAuth, subir('imagen', 'post'), asyncHandler(async (req, res) => {
+    const titulo = v.texto(req.body.titulo, 'El titulo', { max: 120 });
+    const contenido = v.texto(req.body.contenido, 'El contenido', { max: 3000 });
+    const categoriaId = v.entero(req.body.categoriaId, 'La categoria');
+    const tags = v.etiquetas(req.body.tags);
+    const esAnonimo = v.booleano(req.body.esAnonimo) ? 1 : 0;
+
+    const [categorias] = await pool.query('SELECT id FROM categorias WHERE id = ?', [categoriaId]);
+    if (categorias.length === 0) throw new ErrorHttp(400, 'Categoría no encontrada');
+
+    const tagIds = await resolverTags(tags);
+    const imagenUrl = req.file ? `/uploads/${req.file.filename}` : null;
+
+    const postId = await conTransaccion(async (conexion) => {
+        const [resultado] = await conexion.query(
+            `INSERT INTO posts (titulo, contenido, imagen_url, es_anonimo, usuario_id, categoria_id)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [titulo, contenido, imagenUrl, esAnonimo, req.usuario.id, categoriaId]);
+        for (const tagId of tagIds) {
+            await conexion.query('INSERT INTO post_tags (post_id, tag_id) VALUES (?, ?)', [resultado.insertId, tagId]);
         }
+        return resultado.insertId;
+    });
 
-        if (post.imagen_url) eliminarImagen(post.imagen_url);
+    await notificarMenciones({
+        texto: `${titulo}\n${contenido}`,
+        actor: esAnonimo ? null : await actorDe(req.usuario.id),
+        postId,
+        claveBase: `mencion:post:${postId}`
+    });
 
-        await pool.query('DELETE FROM posts WHERE id = ?', [id]);
-        res.json({ mensaje: 'Post eliminado' });
-    } catch (error) {
-        res.status(400).json({ error: error.message });
+    res.status(201).json(await obtenerPost(postId, req.usuario));
+}));
+
+router.put('/posts/:id', requireAuth, subir('imagen', 'post'), asyncHandler(async (req, res) => {
+    const id = v.entero(req.params.id, 'El id');
+    const [rows] = await pool.query('SELECT * FROM posts WHERE id = ?', [id]);
+    if (rows.length === 0) throw new ErrorHttp(404, 'Post no encontrado');
+    const post = rows[0];
+
+    // solo el autor edita
+    if (post.usuario_id !== req.usuario.id) throw new ErrorHttp(403, 'No tienes permiso para editar este post');
+
+    const titulo = v.texto(req.body.titulo, 'El titulo', { max: 120 });
+    const contenido = v.texto(req.body.contenido, 'El contenido', { max: 3000 });
+    const categoriaId = req.body.categoriaId ? v.entero(req.body.categoriaId, 'La categoria') : post.categoria_id;
+    const tags = req.body.tags !== undefined ? v.etiquetas(req.body.tags) : null;
+
+    const [categorias] = await pool.query('SELECT id FROM categorias WHERE id = ?', [categoriaId]);
+    if (categorias.length === 0) throw new ErrorHttp(400, 'Categoría no encontrada');
+
+    const tagIds = tags ? await resolverTags(tags) : null;
+    const imagenNueva = req.file ? `/uploads/${req.file.filename}` : post.imagen_url;
+
+    await conTransaccion(async (conexion) => {
+        await conexion.query(
+            `UPDATE posts SET titulo = ?, contenido = ?, categoria_id = ?, imagen_url = ?, editado = 1, editado_at = NOW()
+             WHERE id = ?`, [titulo, contenido, categoriaId, imagenNueva, id]);
+        if (tagIds) {
+            await conexion.query('DELETE FROM post_tags WHERE post_id = ?', [id]);
+            for (const tagId of tagIds) {
+                await conexion.query('INSERT INTO post_tags (post_id, tag_id) VALUES (?, ?)', [id, tagId]);
+            }
+        }
+    });
+    if (req.file && post.imagen_url) eliminarImagen(post.imagen_url);
+
+    await notificarMenciones({
+        texto: `${titulo}\n${contenido}`,
+        actor: post.es_anonimo ? null : await actorDe(req.usuario.id),
+        postId: id,
+        claveBase: `mencion:post:${id}`
+    });
+
+    res.json(await obtenerPost(id, req.usuario));
+}));
+
+router.delete('/posts/:id', requireAuth, asyncHandler(async (req, res) => {
+    const id = v.entero(req.params.id, 'El id');
+    const [rows] = await pool.query('SELECT usuario_id FROM posts WHERE id = ?', [id]);
+    if (rows.length === 0) throw new ErrorHttp(404, 'Post no encontrado');
+
+    const esAutor = rows[0].usuario_id === req.usuario.id;
+    if (!esAutor && req.usuario.rol !== 'admin') {
+        throw new ErrorHttp(403, 'No tienes permiso para eliminar este post');
     }
-});
+
+    await eliminarPost(id);
+    if (!esAutor) await auditar(req.usuario.id, 'eliminar_post', 'post', id, 'Eliminado por un administrador');
+    res.json({ exito: true, mensaje: 'Post eliminado' });
+}));
+
+router.post('/posts/:id/like', requireAuth, asyncHandler(async (req, res) => {
+    const id = v.entero(req.params.id, 'El id');
+    const [posts] = await pool.query('SELECT usuario_id FROM posts WHERE id = ?', [id]);
+    if (posts.length === 0) throw new ErrorHttp(404, 'Post no encontrado');
+
+    const { creado, likes, likedByMe } = await toggleLike('post_likes', 'post_id', id, req.usuario.id);
+    if (creado) {
+        const actor = await actorDe(req.usuario.id);
+        await crearNotificacion({
+            destinoId: posts[0].usuario_id,
+            actorId: req.usuario.id,
+            tipo: 'like',
+            mensaje: `@${actor.username} le dio like a tu publicación`,
+            referenciaId: id,
+            clave: `like:post:${id}:u${req.usuario.id}`
+        });
+    }
+    res.json({ likes, likedByMe });
+}));
+
+router.post('/posts/:id/guardar', requireAuth, asyncHandler(async (req, res) => {
+    const id = v.entero(req.params.id, 'El id');
+    const [posts] = await pool.query('SELECT id FROM posts WHERE id = ?', [id]);
+    if (posts.length === 0) throw new ErrorHttp(404, 'Post no encontrado');
+
+    let guardado = false;
+    await reintentarDeadlock(async () => {
+        const [borrado] = await pool.query('DELETE FROM guardados WHERE usuario_id = ? AND post_id = ?', [req.usuario.id, id]);
+        guardado = false;
+        if (borrado.affectedRows === 0) {
+            // si dos clicks llegan a la vez, la PK compuesta deja un solo registro
+            await ignorarDuplicado(() => pool.query('INSERT INTO guardados (usuario_id, post_id) VALUES (?, ?)', [req.usuario.id, id]));
+            guardado = true;
+        }
+    });
+    res.json({ exito: true, guardado });
+}));
+
+async function actorDe(usuarioId) {
+    const [rows] = await pool.query('SELECT id, username FROM usuarios WHERE id = ?', [usuarioId]);
+    return rows[0];
+}
 
 module.exports = router;
