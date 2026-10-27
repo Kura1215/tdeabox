@@ -21,7 +21,23 @@ async function apiRequest(endpoint, options = {}) {
         headers
     };
 
-    const response = await fetch(`${API_URL}${endpoint}`, fetchOptions);
+    // un fallo de red (TypeError "Failed to fetch") en un GET se reintenta una vez: es seguro repetirlo
+    const esGet = !options.method || options.method === 'GET';
+    let response;
+    try {
+        response = await fetch(`${API_URL}${endpoint}`, fetchOptions);
+    } catch (error) {
+        if (esGet) {
+            await new Promise((r) => setTimeout(r, 400));
+            try {
+                response = await fetch(`${API_URL}${endpoint}`, fetchOptions);
+            } catch (e) {
+                throw new Error('No se pudo conectar con el servidor. Verifica que el backend este encendido.');
+            }
+        } else {
+            throw new Error('No se pudo conectar con el servidor. Verifica que el backend este encendido.');
+        }
+    }
 
     if (response.status === 401 && !endpoint.includes('/api/auth/')) {
         localStorage.removeItem('token');
@@ -134,6 +150,10 @@ export const api = {
 
     eliminarComentario: (id) => {
         return apiRequest(`/api/comentarios/${id}`, { method: 'DELETE' });
+    },
+
+    sesion: () => {
+        return apiRequest('/api/users/me/sesion', { method: 'GET' });
     },
 
     verPerfil: (page = 1) => {

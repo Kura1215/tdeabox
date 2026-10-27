@@ -1,4 +1,5 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { api } from '../api';
 
 const AuthContext = createContext(null);
 
@@ -18,6 +19,18 @@ function leerUsuarioGuardado() {
 
 export function AuthProvider({ children }) {
     const [usuario, setUsuario] = useState(leerUsuarioGuardado());
+
+    // el rol se guardo al iniciar sesion; lo refrescamos desde el servidor por si cambio en la BD
+    const hayToken = Boolean(usuario?.token);
+    useEffect(() => {
+        if (!hayToken) return;
+        api.sesion().then((s) => {
+            localStorage.setItem('rol', s.rol);
+            localStorage.setItem('nombre', s.nombre);
+            localStorage.setItem('fotoPerfil', s.fotoPerfil || '');
+            setUsuario((prev) => (prev ? { ...prev, rol: s.rol, nombre: s.nombre, fotoPerfil: s.fotoPerfil } : prev));
+        }).catch(() => {});
+    }, [hayToken]);
 
     function login(token, usuarioId, nombre, username, fotoPerfil, rol = 'usuario') {
         localStorage.setItem('token', token);

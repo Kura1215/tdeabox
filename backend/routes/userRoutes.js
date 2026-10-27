@@ -73,6 +73,13 @@ function perfilBase(u) {
     };
 }
 
+// Datos ligeros de la sesion: el frontend los consulta al arrancar para refrescar el rol
+// (si se vuelve admin a alguien en la BD, no tiene que cerrar sesion para ver el panel)
+router.get('/me/sesion', requireAuth, asyncHandler(async (req, res) => {
+    const [[u]] = await pool.query('SELECT id, nombre, username, foto_perfil, rol FROM usuarios WHERE id = ?', [req.usuario.id]);
+    res.json({ exito: true, usuarioId: u.id, nombre: u.nombre, username: u.username, fotoPerfil: u.foto_perfil || '', rol: u.rol });
+}));
+
 // Vista del perfil propio (con correo y posts anonimos incluidos)
 router.get('/me', requireAuth, asyncHandler(async (req, res) => {
     const [usuarios] = await pool.query('SELECT * FROM usuarios WHERE id = ?', [req.usuario.id]);
