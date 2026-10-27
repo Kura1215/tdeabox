@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -9,6 +9,30 @@ import Alerta from '../components/Alerta';
 
 const FILTROS_VACIOS = { categoria: '', q: '', autor: '', desde: '', hasta: '', siguiendo: false };
 
+const POR_PAGINA = 20;   // maximo que permite el backend por peticion
+const TOPE_POSTS = 500;  // tope de publicaciones en memoria para no afectar el rendimiento
+
+// minusculas y sin tildes para que "academico" encuentre "Académico"
+function normalizar(texto) {
+    return String(texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function coincide(post, f, tag) {
+    if (f.categoria && String(post.categoriaId) !== f.categoria) return false;
+    if (tag && !post.tags.includes(tag.toLowerCase())) return false;
+    if (f.autor) {
+        const a = normalizar(f.autor.replace(/^@/, ''));
+        if (!normalizar(post.usernameUsuario).includes(a) && !normalizar(post.nombreUsuario).includes(a)) return false;
+    }
+    if (f.desde && new Date(post.fechaCreacion) < new Date(`${f.desde}T00:00:00`)) return false;
+    if (f.hasta && new Date(post.fechaCreacion) >= new Date(new Date(`${f.hasta}T00:00:00`).getTime() + 86400000)) return false;
+    if (f.q) {
+        const texto = normalizar(`${post.titulo} ${post.contenido} ${post.tags.join(' ')}`);
+        if (!normalizar(f.q).split(/\s+/).filter(Boolean).every((palabra) => texto.includes(palabra))) return false;
+    }
+    return true;
+}
+
 export default function Feed() {
     const { usuario } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -17,11 +41,13 @@ export default function Feed() {
     const [categorias, setCategorias] = useState([]);
     const [filtros, setFiltros] = useState(FILTROS_VACIOS);
     const [avanzado, setAvanzado] = useState(false);
-    const [page, setPage] = useState(1);
-    const [posts, setPosts] = useState([]);
-    const [paginacion, setPaginacion] = useState({ page: 1, paginas: 1, total: 0 });
+    const [posts, setPosts] = useState([]);        // todas las publicaciones cargadas hasta ahora
+    const [pagina, setPagina] = useState(0);       // ultima pagina cargada del servidor
+    const [hayMas, setHayMas] = useState(true);
     const [cargando, setCargando] = useState(true);
     const [alerta, setAlerta] = useState({ mensaje: '', tipo: '' });
+    const peticion = useRef(0);                    // descarta respuestas de una carga anterior
+    const centinela = useRef(null);
 
     useEffect(() => {
         api.listarCategorias()
@@ -29,44 +55,75 @@ export default function Feed() {
             .catch(() => setAlerta({ mensaje: 'No se pudieron cargar las categorias del foro.', tipo: 'error' }));
     }, []);
 
-    // busqueda en vivo: esperamos 300ms despues del ultimo cambio antes de pedir los posts
+    // Al abrir el feed (o cambiar "solo quienes sigo", que solo el servidor puede saber) se reinicia la lista
     useEffect(() => {
-        const espera = setTimeout(cargarPublicaciones, 300);
-        return () => clearTimeout(espera);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filtros, tag, page]);
+        peticion.current += 1;
+        setPosts([]);
+        setPagina(0);
+        setHayMas(true);
+        setCargando(false);
+    }, [filtros.siguiendo]);
 
-    async function cargarPublicaciones() {
+    const cargarSiguiente = useCallback(async () => {
+        const id = peticion.current;
         setCargando(true);
-        setAlerta({ mensaje: '', tipo: '' });
-
         try {
-            const data = await api.listarPosts({ ...filtros, tag }, page);
-            setPosts(data.posts);
-            setPaginacion(data.paginacion);
+            const data = await api.listarPosts({ siguiendo: filtros.siguiendo }, pagina + 1, POR_PAGINA);
+            if (id !== peticion.current) return;
+            setPosts((prev) => {
+                const vistos = new Set(prev.map((p) => p.id));
+                return [...prev, ...data.posts.filter((p) => !vistos.has(p.id))];
+            });
+            setPagina(data.paginacion.page);
+            setHayMas(data.paginacion.page < data.paginacion.paginas);
+            setAlerta({ mensaje: '', tipo: '' });
         } catch (error) {
-            setPosts([]);
+            if (id !== peticion.current) return;
+            setHayMas(false);
             setAlerta({ mensaje: error.message || 'No se pudieron obtener las publicaciones del servidor.', tipo: 'error' });
         } finally {
-            setCargando(false);
+            if (id === peticion.current) setCargando(false);
         }
-    }
+    }, [filtros.siguiendo, pagina]);
 
-    // cualquier cambio de filtro vuelve a la pagina 1
+    // el filtrado se hace en el navegador sobre lo ya cargado: instantaneo y sin peticiones por tecla
+    const filtroTexto = useDeferredValue(filtros);
+    const visibles = useMemo(
+        () => posts.filter((p) => coincide(p, filtroTexto, tag)),
+        [posts, filtroTexto, tag]
+    );
+
+    const hayFiltro = Boolean(filtros.q || filtros.autor || filtros.desde || filtros.hasta || filtros.categoria || tag);
+    const puedeCargar = hayMas && !cargando && posts.length < TOPE_POSTS;
+
+    // carga automatica: la primera pagina siempre, y mientras haya un filtro activo se siguen trayendo
+    // paginas (de a 20, hasta el tope) para que la busqueda cubra todas las publicaciones
+    useEffect(() => {
+        if (puedeCargar && (pagina === 0 || hayFiltro)) cargarSiguiente();
+    }, [puedeCargar, pagina, hayFiltro, cargarSiguiente]);
+
+    // sin filtro, las siguientes paginas se piden al llegar al final de la lista (scroll infinito)
+    useEffect(() => {
+        const el = centinela.current;
+        if (!el || !puedeCargar) return undefined;
+        const observador = new IntersectionObserver((entradas) => {
+            if (entradas[0].isIntersecting) cargarSiguiente();
+        }, { rootMargin: '300px' });
+        observador.observe(el);
+        return () => observador.disconnect();
+    }, [puedeCargar, cargarSiguiente, visibles.length]);
+
     function cambiarFiltro(cambio) {
         setFiltros((prev) => ({ ...prev, ...cambio }));
-        setPage(1);
     }
 
     function quitarTag() {
         setSearchParams({});
-        setPage(1);
     }
 
     function limpiar() {
         setFiltros(FILTROS_VACIOS);
         setSearchParams({});
-        setPage(1);
     }
 
     return (
@@ -113,7 +170,7 @@ export default function Feed() {
                         <input
                             type="text"
                             maxLength={100}
-                            placeholder="Buscar en titulo y contenido..."
+                            placeholder="Buscar en titulo, contenido y etiquetas..."
                             value={filtros.q}
                             onChange={(e) => cambiarFiltro({ q: e.target.value })}
                         />
@@ -130,7 +187,7 @@ export default function Feed() {
                         {tag && (
                             <span className="tag tag-activo">#{tag} <button onClick={quitarTag} aria-label="Quitar etiqueta">×</button></span>
                         )}
-                        {(filtros.q || filtros.autor || filtros.desde || filtros.hasta || filtros.categoria || filtros.siguiendo || tag) && (
+                        {(hayFiltro || filtros.siguiendo) && (
                             <button className="btn btn-sm btn-secundario" onClick={limpiar}>Limpiar filtros</button>
                         )}
                     </div>
@@ -155,30 +212,30 @@ export default function Feed() {
                     <Alerta mensaje={alerta.mensaje} tipo={alerta.tipo} />
 
                     <div>
+                        {visibles.map((post) => (
+                            <PostCard key={post.id} post={post} />
+                        ))}
+
                         {cargando && (
                             <p style={{ textAlign: 'center', color: 'var(--gris-medio)', fontFamily: 'Arial, sans-serif', padding: '20px' }}>
-                                Cargando publicaciones...
+                                {hayFiltro ? 'Buscando en las publicaciones...' : 'Cargando publicaciones...'}
                             </p>
                         )}
 
-                        {!cargando && posts.length === 0 && (
+                        {!cargando && visibles.length === 0 && !hayMas && (
                             <div className="box" style={{ padding: '20px', textAlign: 'center', color: 'var(--gris-medio)', fontFamily: 'Arial, sans-serif' }}>
                                 No hay publicaciones para mostrar.
                             </div>
                         )}
-
-                        {!cargando && posts.map((post) => (
-                            <PostCard key={post.id} post={post} />
-                        ))}
                     </div>
 
-                    {paginacion.paginas > 1 && (
-                        <div className="paginacion">
-                            <button className="btn btn-sm btn-primary" disabled={page <= 1} onClick={() => setPage(page - 1)}>◀ Anterior</button>
-                            <span>Pagina {paginacion.page} de {paginacion.paginas} ({paginacion.total} publicaciones)</span>
-                            <button className="btn btn-sm btn-primary" disabled={page >= paginacion.paginas} onClick={() => setPage(page + 1)}>Siguiente ▶</button>
-                        </div>
+                    {hayMas && posts.length >= TOPE_POSTS && (
+                        <p style={{ textAlign: 'center', color: 'var(--gris-medio)', fontFamily: 'Arial, sans-serif', padding: '12px' }}>
+                            Se muestran las {TOPE_POSTS} publicaciones mas recientes. Usa los filtros para acotar.
+                        </p>
                     )}
+
+                    <div ref={centinela} style={{ height: 1 }} />
                 </main>
             </div>
         </>
