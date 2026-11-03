@@ -2,7 +2,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { uploadsDir } = require('./upload');
-const { ErrorHttp } = require('../utils/errores');
+const { ErrorHttp, errorMysql } = require('../utils/errores');
 
 function responder(res, status, mensaje) {
     res.status(status).json({ exito: false, error: mensaje, mensaje });
@@ -27,10 +27,12 @@ function manejarErrores(error, req, res, next) {
         return responder(res, 400, 'Archivo no valido');
     }
     if (error instanceof ErrorHttp) return responder(res, error.status, error.message);
-    if (error.code === 'ER_DUP_ENTRY') return responder(res, 409, 'El registro ya existe');
+
+    const mysql = errorMysql(error);
+    if (mysql.code === 'ER_DUP_ENTRY') return responder(res, 409, 'El registro ya existe');
     // SIGNAL de los triggers de integridad
-    if (error.sqlState === '45000') return responder(res, 400, error.sqlMessage);
-    if (error.code === 'ER_NO_REFERENCED_ROW_2') return responder(res, 400, 'Referencia no valida');
+    if (mysql.sqlState === '45000') return responder(res, 400, mysql.sqlMessage);
+    if (mysql.code === 'ER_NO_REFERENCED_ROW_2') return responder(res, 400, 'Referencia no valida');
 
     if (process.env.NODE_ENV !== 'test' || process.env.DEBUG_ERR) console.error(error);
     responder(res, 500, 'Error interno del servidor');

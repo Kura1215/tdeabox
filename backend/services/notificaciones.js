@@ -1,5 +1,6 @@
-const pool = require('../db');
-const { ignorarDuplicado } = require('../utils/errores');
+const { Notificacion, Usuario } = require('../models');
+const { ErrorHttp, ignorarDuplicado } = require('../utils/errores');
+const { datosPaginacion } = require('../utils/validar');
 
 const REGEX_MENCION = /(?<![\w@])@([a-zA-Z0-9_]{3,30})/g;
 
@@ -11,11 +12,14 @@ async function crearNotificacion({ destinoId, actorId = null, tipo, mensaje, ref
     if (!destinoId || (actorId && destinoId === actorId)) return false;
 
     return ignorarDuplicado(async () => {
-        await pool.query(
-            `INSERT INTO notificaciones (usuario_id, actor_id, tipo, mensaje, referencia_id, clave)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [destinoId, actorId, tipo, String(mensaje).slice(0, 150), referenciaId, clave]
-        );
+        await Notificacion.create({
+            usuario_id: destinoId,
+            actor_id: actorId,
+            tipo,
+            mensaje: String(mensaje).slice(0, 150),
+            referencia_id: referenciaId,
+            clave
+        });
         return true;
     }, false);
 }
@@ -35,7 +39,7 @@ async function notificarMenciones({ texto, actor, postId, claveBase }) {
     const usernames = extraerMenciones(texto);
     if (usernames.length === 0) return;
 
-    const [usuarios] = await pool.query('SELECT id FROM usuarios WHERE username IN (?)', [usernames]);
+    const usuarios = await Usuario.findAll({ where: { username: usernames }, attributes: ['id'] });
     const mensaje = actor
         ? `@${actor.username} te mencionó en una publicación`
         : 'Alguien te mencionó en una publicación anónima';
@@ -52,4 +56,35 @@ async function notificarMenciones({ texto, actor, postId, claveBase }) {
     }
 }
 
-module.exports = { crearNotificacion, notificarMenciones, extraerMenciones };
+async function listarNotificaciones(usuarioId, soloNoLeidas, pag) {
+    const where = soloNoLeidas ? { usuario_id: usuarioId, leido: false } : { usuario_id: usuarioId };
+    const total = await Notificacion.count({ where });
+    const noLeidas = await Notificacion.count({ where: { usuario_id: usuarioId, leido: false } });
+    const filas = await Notificacion.findAll({
+        where, order: [['fecha', 'DESC'], ['id', 'DESC']], limit: pag.limit, offset: pag.offset
+    });
+
+    return {
+        notificaciones: filas.map((n) => ({
+            id: n.id, tipo: n.tipo, mensaje: n.mensaje, referenciaId: n.referencia_id,
+            leido: Boolean(n.leido), fecha: n.fecha
+        })),
+        noLeidas,
+        paginacion: datosPaginacion(total, pag)
+    };
+}
+
+async function marcarTodasLeidas(usuarioId) {
+    await Notificacion.update({ leido: true }, { where: { usuario_id: usuarioId } });
+}
+
+// solo se pueden marcar las notificaciones propias
+async function marcarNotificacion(id, usuarioId, leido) {
+    const notificacion = await Notificacion.findOne({ where: { id, usuario_id: usuarioId } });
+    if (!notificacion) throw new ErrorHttp(404, 'Notificación no encontrada');
+    await notificacion.update({ leido });
+}
+
+module.exports = {
+    crearNotificacion, notificarMenciones, extraerMenciones, listarNotificaciones, marcarTodasLeidas, marcarNotificacion
+};

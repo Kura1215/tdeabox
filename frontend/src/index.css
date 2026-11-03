@@ -1,38 +1,38 @@
 :root {
-    --azul: #1a3a5c;
-    --azul-claro: #2e6da4;
+    --azul: #086735;
+    --azul-claro: #147a44;
     --verde: #2e8b57;
-    --fondo: #e8edf4;
+    --fondo: #E3F3EB;
     --blanco: #ffffff;
-    --gris-claro: #dce3ec;
-    --gris-medio: #6b7280;
-    --texto: #1c1c1e;
-    --borde: #c8d0dc;
+    --gris-claro: #CBE8D8;
+    --gris-medio: #526b5e;
+    --texto: #18261f;
+    --borde: #B3DEC6;
     --rojo: #cc0000;
     --alerta-error-fondo: #ffe0e0;
-    --alerta-ok-fondo: #e0f0e0;
-    --alerta-ok-texto: #1a5c30;
-    --resaltado: #eef5fc;
-    --nav-fondo: #1a3a5c;
+    --alerta-ok-fondo: #d8f0e2;
+    --alerta-ok-texto: #086735;
+    --resaltado: #EAF7F1;
+    --nav-fondo: #086735;
 }
 
 /* Modo oscuro: se activa con data-tema="oscuro" en <html> (boton del navbar o preferencia del sistema) */
 :root[data-tema="oscuro"] {
-    --azul: #9cc3ee;
-    --azul-claro: #3f7fc0;
-    --verde: #3aa56b;
-    --fondo: #12171e;
-    --blanco: #1c232d;
-    --gris-claro: #2a3441;
-    --gris-medio: #9aa6b5;
-    --texto: #e6eaf0;
-    --borde: #34404f;
+    --azul: #BFE7D2;
+    --azul-claro: #086735;
+    --verde: #52b788;
+    --fondo: #000000;
+    --blanco: #1a2620;
+    --gris-claro: #26382f;
+    --gris-medio: #95afa1;
+    --texto: #EAF7F1;
+    --borde: #2f463b;
     --rojo: #ff6b6b;
     --alerta-error-fondo: #3a1c1c;
-    --alerta-ok-fondo: #173424;
-    --alerta-ok-texto: #8fe3b0;
-    --resaltado: #223246;
-    --nav-fondo: #0b2540;
+    --alerta-ok-fondo: #143022;
+    --alerta-ok-texto: #BFE7D2;
+    --resaltado: #21332a;
+    --nav-fondo: #064423;
     color-scheme: dark;
 }
 
@@ -72,10 +72,10 @@ nav {
     text-decoration: none;
 }
 
-.nav-logo span { color: #a8c8f0; }
+.nav-logo span { color: #BFE7D2; }
 
 .nav-links a {
-    color: #c8dff5;
+    color: #EAF7F1;
     text-decoration: none;
     margin-left: 14px;
     font-size: 12px;
@@ -138,11 +138,11 @@ nav {
 .post-card h3 {
     font-size: 15px;
     font-family: Arial, sans-serif;
-    color: var(--azul-claro);
+    color: var(--azul);
     margin-bottom: 4px;
 }
 
-.post-card h3 a { color: var(--azul-claro); text-decoration: none; }
+.post-card h3 a { color: var(--azul); text-decoration: none; }
 .post-card h3 a:hover { text-decoration: underline; }
 
 .post-meta {

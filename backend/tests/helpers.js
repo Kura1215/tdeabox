@@ -1,6 +1,16 @@
 const request = require('supertest');
+const mysql = require('mysql2/promise');
 const { crearApp } = require('../app');
-const pool = require('../db');
+
+// Conexion directa a MySQL solo para que los tests revisen la BD (triggers, cascadas, duplicados).
+// La aplicacion no la usa: trabaja con los modelos de Sequelize.
+const pool = mysql.createPool({
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD
+});
 
 const app = crearApp();
 let contador = 0;

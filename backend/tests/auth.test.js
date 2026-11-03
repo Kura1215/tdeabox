@@ -85,10 +85,65 @@ describe('RF01 registro y login', () => {
         expect(fila.password_hash).toMatch(/^\$2[aby]\$10\$/);
     });
 
-    test('el JWT dura 7 dias', async () => {
+    test('el token de acceso dura 15 minutos y la sesion (cookie HttpOnly) 7 dias', async () => {
+        const datos = base();
+        const res = await request(app).post('/api/auth/register').send(datos).expect(201);
+        const payload = JSON.parse(Buffer.from(res.body.token.split('.')[1], 'base64').toString());
+        expect(payload.exp - payload.iat).toBe(15 * 60);
+
+        const cookie = res.headers['set-cookie'][0];
+        expect(cookie).toMatch(/^tdeavox_sesion=/);
+        expect(cookie).toMatch(/HttpOnly/);
+        expect(cookie).toMatch(/SameSite=Strict/);
+        expect(cookie).toMatch(/Path=\/api\/auth/);
+        const dias = (new Date(cookie.match(/Expires=([^;]+)/)[1]) - Date.now()) / (24 * 3600 * 1000);
+        expect(Math.round(dias)).toBe(7);
+    });
+
+    test('renovar entrega un token nuevo con la cookie y exige el header anti-CSRF', async () => {
+        const datos = base();
+        const reg = await request(app).post('/api/auth/register').send(datos).expect(201);
+        const cookie = reg.headers['set-cookie'][0].split(';')[0];
+
+        // sin el header propio (como haria un formulario de otro sitio) se rechaza
+        await request(app).post('/api/auth/renovar').set('Cookie', cookie).expect(403);
+        // sin cookie no hay sesion
+        await request(app).post('/api/auth/renovar').set('X-Requested-With', 'TdeaVox').expect(401);
+
+        const ren = await request(app).post('/api/auth/renovar').set('Cookie', cookie).set('X-Requested-With', 'TdeaVox');
+        expect(ren.status).toBe(200);
+        expect(ren.body).toMatchObject({ exito: true, usuarioId: reg.body.usuarioId, username: datos.username });
+        await request(app).get('/api/users/me').set('Authorization', `Bearer ${ren.body.token}`).expect(200);
+    });
+
+    test('cerrar sesion revoca la cookie y los tokens de esa sesion', async () => {
+        const datos = base();
+        const reg = await request(app).post('/api/auth/register').send(datos).expect(201);
+        const cookie = reg.headers['set-cookie'][0].split(';')[0];
+        const auth = `Bearer ${reg.body.token}`;
+        await request(app).get('/api/users/me').set('Authorization', auth).expect(200);
+
+        const salir = await request(app).post('/api/auth/logout').set('Cookie', cookie).set('X-Requested-With', 'TdeaVox');
+        expect(salir.status).toBe(200);
+        expect(salir.headers['set-cookie'][0]).toMatch(/tdeavox_sesion=;/);
+
+        // el JWT aun no vence, pero su sesion ya no existe
+        await request(app).get('/api/users/me').set('Authorization', auth).expect(401);
+        await request(app).post('/api/auth/renovar').set('Cookie', cookie).set('X-Requested-With', 'TdeaVox').expect(401);
+
+        // otra sesion del mismo usuario (otro navegador) sigue abierta
+        const otra = await request(app).post('/api/auth/login').send({ correo: datos.correo, password: datos.password });
+        await request(app).get('/api/users/me').set('Authorization', `Bearer ${otra.body.token}`).expect(200);
+    });
+
+    test('un token vencido da 401 tambien en rutas publicas (para que el frontend lo renueve)', async () => {
+        const jwt = require('jsonwebtoken');
         const u = await crearUsuario();
-        const payload = JSON.parse(Buffer.from(u.token.split('.')[1], 'base64').toString());
-        expect(payload.exp - payload.iat).toBe(7 * 24 * 3600);
+        const { sid } = jwt.decode(u.token);
+        const vencido = jwt.sign({ sub: String(u.id), sid, exp: Math.floor(Date.now() / 1000) - 60 }, process.env.JWT_SECRET);
+        await request(app).get('/api/posts').set('Authorization', `Bearer ${vencido}`).expect(401);
+        // sin token sigue funcionando como visitante
+        await request(app).get('/api/posts').expect(200);
     });
 
     test('rate limiting en auth: bloquea tras superar el maximo', async () => {

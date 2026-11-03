@@ -22,9 +22,9 @@ export default function Navbar() {
         return () => { activo = false; clearInterval(intervalo); };
     }, [location.pathname]);
 
-    function handleLogout(e) {
+    async function handleLogout(e) {
         e.preventDefault();
-        logout();
+        await logout();
         navigate('/');
     }
 

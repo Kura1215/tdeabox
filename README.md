@@ -3,8 +3,10 @@
 Red social interna del Tecnológico de Antioquia (TDEA): publicaciones por categoría y etiquetas, comentarios con respuestas,
 likes, seguidores, perfiles, guardados, notificaciones, menciones, insignias, publicaciones anónimas, reportes y panel de administración.
 
-- **Backend:** Node.js + Express + MySQL (`mysql2`), JWT (7 días), bcrypt.
+- **Backend:** Node.js + Express + MySQL con el ORM **Sequelize**, JWT de 15 min + sesión de 7 días en cookie HttpOnly, bcrypt.
 - **Frontend:** React + Vite.
+
+> Resumen de los cambios pedidos en la revisión del profesor (capas, ORM, JWT y cierre del servidor): [CAMBIOS.md](CAMBIOS.md).
 
 ## Requisitos
 
@@ -28,9 +30,11 @@ npm run dev                 # http://localhost:5173
 ```
 
 `npm run db:init` es **idempotente y no borra datos**: si ya tienes la base de una versión anterior, solo agrega las tablas y
-columnas que faltan. Se puede ejecutar cuantas veces haga falta.
+columnas que faltan (por ejemplo `sesiones`). Se puede ejecutar cuantas veces haga falta.
 
 Si el backend no corre en `http://localhost:8080`, define `VITE_API_URL` en `frontend/.env`.
+Abre el frontend en `http://localhost:5173` (no en `127.0.0.1`): la cookie de sesión es `SameSite=Strict` y solo viaja
+entre páginas del mismo sitio que el backend.
 
 ### Variables de entorno (`backend/.env`)
 
@@ -38,7 +42,8 @@ Si el backend no corre en `http://localhost:8080`, define `VITE_API_URL` en `fro
 |---|---|
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Conexión a MySQL |
 | `JWT_SECRET` | Secreto largo y aleatorio (obligatorio) |
-| `JWT_EXPIRATION` | Vigencia de la sesión, `7d` |
+| `JWT_EXPIRATION` | Vigencia del token de acceso, `15m` |
+| `SESION_DIAS` | Vigencia de la sesión (cookie que renueva el token), `7` |
 | `PORT` | Puerto del backend (8080) |
 | `CORS_ORIGINS` | Orígenes del frontend, separados por coma |
 | `AUTH_RATE_MAX` | Intentos de registro/login por IP cada 15 min (30) |
@@ -56,7 +61,8 @@ cd backend
 npm test        # Jest + Supertest; usa la BD aparte tdeavox_test (se recrea sola en cada corrida)
 ```
 
-Cubren: auth (dominio, normalización, duplicados concurrentes, rate limiting, MIME falso), posts/etiquetas/feed/filtros/ranking,
+Cubren: auth (dominio, normalización, duplicados concurrentes, rate limiting, MIME falso, token de 15 min, renovación con
+cookie, CSRF y revocación al cerrar sesión), posts/etiquetas/feed/filtros/ranking,
 anonimato (feed, detalle, perfil, búsqueda, "solo de quienes sigo", comentarios del autor), límites de archivos (2/3/5 MB),
 comentarios (respuesta a respuesta bloqueada por API **y** por la BD), likes/seguidores/guardados concurrentes, auto-follow,
 notificaciones (sin auto-aviso, sin duplicados), menciones, insignias, reportes duplicados, panel admin y auditoría.
@@ -122,13 +128,30 @@ server {
 
 Sirve el frontend compilado (`npm run build` → `frontend/dist`) desde el mismo dominio o define `CORS_ORIGINS` con su origen.
 
+## Reinicio automático (supervisor)
+
+Ante un error no capturado (`uncaughtException` / `unhandledRejection`) el backend **no sigue funcionando** en un estado
+dudoso: termina las peticiones en curso, cierra la base de datos y sale con código 1. En producción debe correr bajo un
+supervisor que lo vuelva a iniciar, por ejemplo [pm2](https://pm2.keymetrics.io/):
+
+```bash
+npm install -g pm2
+cd backend
+pm2 start server.js --name tdeavox    # lo reinicia solo si se cae
+pm2 logs tdeavox                      # ver los errores
+```
+
+(También sirve systemd con `Restart=always` o Docker con `restart: always`.) En desarrollo, `npm run dev` espera a que
+guardes un archivo para volver a arrancar.
+
 ## API
 
 Respuestas de error: `{ "exito": false, "error": "...", "mensaje": "..." }`. Rutas protegidas: `Authorization: Bearer <token>`.
 
 | Método y ruta | Descripción |
 |---|---|
-| `POST /api/auth/register`, `POST /api/auth/login` | Registro (multipart con `foto` opcional) y login; ambos devuelven `{ token, usuarioId, nombre, username, fotoPerfil, rol }` |
+| `POST /api/auth/register`, `POST /api/auth/login` | Registro (multipart con `foto` opcional) y login; ambos devuelven `{ token, usuarioId, nombre, username, fotoPerfil, rol }` y la cookie `tdeavox_sesion` |
+| `POST /api/auth/renovar`, `POST /api/auth/logout` | Token nuevo con la cookie / cerrar sesión en el servidor. Exigen el header `X-Requested-With: TdeaVox` (CSRF) |
 | `GET /api/categorias` | Catálogo de categorías |
 | `GET /api/posts?categoria&tag&autor&q&desde&hasta&siguiendo&page&limit` | Feed paginado (limit 1–20, por defecto 10) |
 | `GET /api/posts/ranking-semanal` | Top de los últimos 7 días (likes, luego comentarios) |
@@ -152,4 +175,5 @@ Respuestas de error: `{ "exito": false, "error": "...", "mensaje": "..." }`. Rut
   Los comentarios que el autor haga en su propio post anónimo también se ocultan. Solo el admin recibe `autorReal`.
 - **Imágenes:** se validan por firma real (`file-type`), se guardan con nombre aleatorio y se borran si la petición falla o el contenido se elimina.
 - **Ranking:** el orden se cachea 60 s en memoria del proceso (si despliegas varias instancias, cada una tiene su caché).
-- **El total del feed** se acota a 5.000 resultados para no contar millones de filas.
+- **Capas:** `routes/` (HTTP: leer y validar la petición, responder) → `services/` (reglas del negocio y consultas con el ORM)
+  → `models/` (un modelo de Sequelize por tabla). Ninguna ruta accede a la base de datos.

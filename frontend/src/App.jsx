@@ -1,7 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { Navigate } from 'react-router-dom';
-import RutaProtegida from './components/RutaProtegida';
+import RutaProtegida, { CargandoSesion } from './components/RutaProtegida';
 import Login from './pages/Login';
 import Feed from './pages/Feed';
 import Perfil from './pages/Perfil';
@@ -13,7 +13,8 @@ import Ranking from './pages/Ranking';
 import Admin from './pages/Admin';
 
 function PaginaInicio() {
-    const { usuario } = useAuth();
+    const { usuario, cargando } = useAuth();
+    if (cargando) return <CargandoSesion />;
     if (usuario) {
         return <Navigate to="/feed" replace />;
     }

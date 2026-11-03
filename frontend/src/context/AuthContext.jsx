@@ -1,62 +1,50 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, guardarToken, renovarSesion } from '../api';
 
 const AuthContext = createContext(null);
 
-function leerUsuarioGuardado() {
-    const token = localStorage.getItem('token');
-    if (!token) return null;
-
-    return {
-        token,
-        usuarioId: localStorage.getItem('usuarioId'),
-        nombre: localStorage.getItem('nombre'),
-        username: localStorage.getItem('username'),
-        fotoPerfil: localStorage.getItem('fotoPerfil'),
-        rol: localStorage.getItem('rol') || 'usuario'
-    };
-}
-
+// La sesion ya no se guarda en localStorage (ver api.js): el token vive en memoria y,
+// al recargar la pagina, se pide uno nuevo con la cookie HttpOnly.
 export function AuthProvider({ children }) {
-    const [usuario, setUsuario] = useState(leerUsuarioGuardado());
+    const [usuario, setUsuario] = useState(null);
+    // mientras se consulta la cookie no sabemos si hay sesion: las rutas esperan
+    const [cargando, setCargando] = useState(true);
 
-    // el rol se guardo al iniciar sesion; lo refrescamos desde el servidor por si cambio en la BD
-    const hayToken = Boolean(usuario?.token);
     useEffect(() => {
-        if (!hayToken) return;
-        api.sesion().then((s) => {
-            localStorage.setItem('rol', s.rol);
-            localStorage.setItem('nombre', s.nombre);
-            localStorage.setItem('fotoPerfil', s.fotoPerfil || '');
-            setUsuario((prev) => (prev ? { ...prev, rol: s.rol, nombre: s.nombre, fotoPerfil: s.fotoPerfil } : prev));
-        }).catch(() => {});
-    }, [hayToken]);
+        // datos que guardaba la version anterior (el token incluido); ya no se usan
+        ['token', 'usuarioId', 'nombre', 'username', 'fotoPerfil', 'rol'].forEach((k) => localStorage.removeItem(k));
+
+        // renovar tambien trae el rol y el perfil actuales desde la BD
+        renovarSesion()
+            .then((s) => setUsuario({
+                usuarioId: s.usuarioId, nombre: s.nombre, username: s.username, fotoPerfil: s.fotoPerfil, rol: s.rol
+            }))
+            .catch(() => setUsuario(null))
+            .finally(() => setCargando(false));
+    }, []);
 
     function login(token, usuarioId, nombre, username, fotoPerfil, rol = 'usuario') {
-        localStorage.setItem('token', token);
-        localStorage.setItem('usuarioId', usuarioId);
-        localStorage.setItem('nombre', nombre);
-        localStorage.setItem('username', username);
-        localStorage.setItem('fotoPerfil', fotoPerfil || '');
-        localStorage.setItem('rol', rol);
-
-        setUsuario({ token, usuarioId, nombre, username, fotoPerfil, rol });
+        guardarToken(token);
+        setUsuario({ usuarioId, nombre, username, fotoPerfil, rol });
     }
 
     function actualizarPerfil(nombre, fotoPerfil) {
-        localStorage.setItem('nombre', nombre);
-        localStorage.setItem('fotoPerfil', fotoPerfil || '');
         setUsuario((prev) => ({ ...prev, nombre, fotoPerfil }));
     }
 
-    function logout() {
-        // se conserva el tema elegido
-        ['token', 'usuarioId', 'nombre', 'username', 'fotoPerfil', 'rol'].forEach((k) => localStorage.removeItem(k));
+    // cierra la sesion en el servidor (revoca la cookie y el token) y luego en el navegador
+    async function logout() {
+        try {
+            await api.logout();
+        } catch (error) {
+            // aunque falle la red, en este navegador la sesion se cierra igual
+        }
+        guardarToken(null);
         setUsuario(null);
     }
 
     return (
-        <AuthContext.Provider value={{ usuario, login, logout, actualizarPerfil }}>
+        <AuthContext.Provider value={{ usuario, cargando, login, logout, actualizarPerfil }}>
             {children}
         </AuthContext.Provider>
     );

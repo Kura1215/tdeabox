@@ -1,13 +1,62 @@
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
+// El token de acceso (dura 15 min) se guarda SOLO en memoria, no en localStorage: un script
+// inyectado (XSS) no lo encuentra guardado y, si lo robara, venceria pronto.
+// La sesion larga vive en una cookie HttpOnly que JavaScript no puede leer; el navegador
+// la envia sola a /api/auth/renovar para pedir un token nuevo.
+let tokenAcceso = null;
+
+export function guardarToken(token) {
+    tokenAcceso = token;
+}
+
+// header que el backend exige en renovar/logout (proteccion CSRF)
+const HEADER_CSRF = { 'X-Requested-With': 'TdeaVox' };
+
+// Pide un token nuevo con la cookie y devuelve los datos de la sesion.
+// Si varias peticiones lo necesitan a la vez, todas esperan la misma llamada.
+let renovando = null;
+export function renovarSesion() {
+    if (!renovando) {
+        renovando = fetch(`${API_URL}/api/auth/renovar`, { method: 'POST', credentials: 'include', headers: HEADER_CSRF })
+            .then(async (response) => {
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || 'Tu sesion ha expirado');
+                tokenAcceso = data.token;
+                return data;
+            })
+            .finally(() => { renovando = null; });
+    }
+    return renovando;
+}
+
+// hace el fetch con el token actual; un fallo de red (TypeError "Failed to fetch") en un GET
+// se reintenta una vez: es seguro repetirlo
+async function enviar(endpoint, options) {
+    const headers = { ...options.headers };
+    if (tokenAcceso) headers['Authorization'] = `Bearer ${tokenAcceso}`;
+    // credentials: 'include' para que el navegador guarde y envie la cookie de sesion
+    const fetchOptions = { ...options, headers, credentials: 'include' };
+
+    const esGet = !options.method || options.method === 'GET';
+    try {
+        return await fetch(`${API_URL}${endpoint}`, fetchOptions);
+    } catch (error) {
+        if (esGet) {
+            await new Promise((r) => setTimeout(r, 400));
+            try {
+                return await fetch(`${API_URL}${endpoint}`, fetchOptions);
+            } catch (e) {
+                // se lanza abajo
+            }
+        }
+        throw new Error('No se pudo conectar con el servidor. Verifica que el backend este encendido.');
+    }
+}
+
 // funcion auxiliar para hacer las peticiones fetch con el token metido
 async function apiRequest(endpoint, options = {}) {
-    const token = localStorage.getItem('token');
     const headers = options.headers || {};
-
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
 
     // si el body no es FormData le mandamos el content type de json
     const isMultipart = options.body instanceof FormData;
@@ -15,32 +64,22 @@ async function apiRequest(endpoint, options = {}) {
         headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify(options.body);
     }
+    options.headers = headers;
 
-    const fetchOptions = {
-        ...options,
-        headers
-    };
+    let response = await enviar(endpoint, options);
 
-    // un fallo de red (TypeError "Failed to fetch") en un GET se reintenta una vez: es seguro repetirlo
-    const esGet = !options.method || options.method === 'GET';
-    let response;
-    try {
-        response = await fetch(`${API_URL}${endpoint}`, fetchOptions);
-    } catch (error) {
-        if (esGet) {
-            await new Promise((r) => setTimeout(r, 400));
-            try {
-                response = await fetch(`${API_URL}${endpoint}`, fetchOptions);
-            } catch (e) {
-                throw new Error('No se pudo conectar con el servidor. Verifica que el backend este encendido.');
-            }
-        } else {
-            throw new Error('No se pudo conectar con el servidor. Verifica que el backend este encendido.');
+    // 401 = el token vencio o la sesion se cerro: se intenta renovar una vez y se repite la peticion
+    if (response.status === 401 && !endpoint.includes('/api/auth/')) {
+        try {
+            await renovarSesion();
+            response = await enviar(endpoint, options);
+        } catch (error) {
+            // la cookie tambien vencio: hay que volver a iniciar sesion
         }
     }
 
     if (response.status === 401 && !endpoint.includes('/api/auth/')) {
-        localStorage.removeItem('token');
+        tokenAcceso = null;
         window.location.href = '/';
         throw new Error('Tu sesion ha expirado. Por favor inicia sesion nuevamente.');
     }
@@ -82,6 +121,11 @@ export const api = {
             method: 'POST',
             body: formData
         });
+    },
+
+    // el servidor borra la sesion y la cookie
+    logout: () => {
+        return apiRequest('/api/auth/logout', { method: 'POST', headers: { ...HEADER_CSRF } });
     },
 
     listarCategorias: () => {

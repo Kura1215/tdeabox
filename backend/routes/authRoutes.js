@@ -1,70 +1,70 @@
+// Rutas de autenticacion: solo leen y validan la peticion, llaman al servicio y responden.
+// La logica de sesiones esta en services/auth.js.
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const pool = require('../db');
-const { generarToken } = require('../config/jwt');
 const { subir } = require('../middleware/upload');
 const { ErrorHttp, asyncHandler } = require('../utils/errores');
 const v = require('../utils/validar');
+const authService = require('../services/auth');
 
 const router = express.Router();
 
-// hash de relleno para que login tarde igual exista o no el correo (evita enumerar usuarios por tiempo)
-const HASH_FALSO = bcrypt.hashSync('relleno-contra-timing', 10);
+const COOKIE_SESION = 'tdeavox_sesion';
+const opcionesCookie = {
+    httpOnly: true,                                // el JavaScript del navegador no la puede leer (XSS)
+    sameSite: 'strict',                            // el navegador no la envia desde otros sitios (CSRF)
+    secure: process.env.NODE_ENV === 'production', // en produccion solo viaja por HTTPS
+    path: '/api/auth'                              // solo se envia a renovar y logout
+};
 
-// misma forma para registro y login
-function respuestaSesion(u, extra = {}) {
-    return {
-        exito: true,
-        token: generarToken(u.id),
-        usuarioId: u.id,
-        nombre: u.nombre,
-        username: u.username,
-        fotoPerfil: u.foto_perfil || '',
-        rol: u.rol || 'usuario',
-        ...extra
-    };
+// Proteccion CSRF de las rutas que usan la cookie: ademas de SameSite exigimos un header propio.
+// Un formulario de otro sitio no puede agregar headers, y un fetch desde otro origen necesita
+// permiso de CORS, que solo tienen los origenes de CORS_ORIGINS.
+function exigirHeaderCsrf(req, res, next) {
+    if (req.get('X-Requested-With') !== 'TdeaVox') return next(new ErrorHttp(403, 'Peticion no permitida'));
+    next();
+}
+
+// guarda la cookie de renovacion y responde con el token de acceso y los datos del usuario
+function responderSesion(res, status, { datos, tokenRenovacion, expira }, extra = {}) {
+    res.cookie(COOKIE_SESION, tokenRenovacion, { ...opcionesCookie, expires: expira });
+    res.status(status).json({ ...datos, ...extra });
 }
 
 router.post('/register', subir('foto', 'perfil'), asyncHandler(async (req, res) => {
-    const nombre = v.texto(req.body.nombre, 'El nombre', { max: 100 });
-    const username = v.username(req.body.username);
-    const correo = v.correoInstitucional(req.body.correo);
-    const password = v.password(req.body.password);
-
-    // la BD tiene UNIQUE en correo y username: es la que decide en caso de carrera
-    const passwordHash = await bcrypt.hash(password, 10);
-    const fotoPerfil = req.file ? `/uploads/${req.file.filename}` : null;
-
-    let resultado;
-    try {
-        [resultado] = await pool.query(
-            'INSERT INTO usuarios (nombre, username, correo, password_hash, foto_perfil) VALUES (?, ?, ?, ?, ?)',
-            [nombre, username, correo, passwordHash, fotoPerfil]);
-    } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') {
-            const campo = /correo/i.test(error.sqlMessage) ? 'El correo ya está registrado' : 'El username ya está en uso';
-            throw new ErrorHttp(409, campo);
-        }
-        throw error;
-    }
-
-    res.status(201).json(respuestaSesion(
-        { id: resultado.insertId, nombre, username, foto_perfil: fotoPerfil, rol: 'usuario' },
-        { mensaje: 'Usuario registrado correctamente' }
-    ));
+    const sesion = await authService.registrar({
+        nombre: v.texto(req.body.nombre, 'El nombre', { max: 100 }),
+        username: v.username(req.body.username),
+        correo: v.correoInstitucional(req.body.correo),
+        password: v.password(req.body.password),
+        fotoPerfil: req.file ? `/uploads/${req.file.filename}` : null
+    });
+    responderSesion(res, 201, sesion, { mensaje: 'Usuario registrado correctamente' });
 }));
 
 router.post('/login', asyncHandler(async (req, res) => {
     const { correo, password } = req.body;
-    const correoNormalizado = typeof correo === 'string' ? correo.trim().toLowerCase() : '';
+    const sesion = await authService.iniciarSesion(
+        typeof correo === 'string' ? correo.trim().toLowerCase() : '',
+        typeof password === 'string' ? password : ''
+    );
+    responderSesion(res, 200, sesion);
+}));
 
-    const [rows] = await pool.query('SELECT * FROM usuarios WHERE correo = ?', [correoNormalizado]);
-    const usuario = rows[0];
-    const coincide = await bcrypt.compare(typeof password === 'string' ? password : '', usuario ? usuario.password_hash : HASH_FALSO);
+// Entrega un token de acceso nuevo usando la cookie (cuando el anterior vencio o al recargar la pagina)
+router.post('/renovar', exigirHeaderCsrf, asyncHandler(async (req, res) => {
+    try {
+        res.json(await authService.renovar(req.cookies[COOKIE_SESION]));
+    } catch (error) {
+        res.clearCookie(COOKIE_SESION, opcionesCookie);
+        throw error;
+    }
+}));
 
-    if (!usuario || !coincide) throw new ErrorHttp(401, 'Credenciales incorrectas');
-
-    res.json(respuestaSesion(usuario));
+// Cierra la sesion en el servidor (revoca la cookie y los tokens de esa sesion)
+router.post('/logout', exigirHeaderCsrf, asyncHandler(async (req, res) => {
+    await authService.cerrarSesion(req.cookies[COOKIE_SESION]);
+    res.clearCookie(COOKIE_SESION, opcionesCookie);
+    res.json({ exito: true, mensaje: 'Sesion cerrada' });
 }));
 
 module.exports = router;

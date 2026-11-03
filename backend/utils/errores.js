@@ -9,12 +9,17 @@ class ErrorHttp extends Error {
 // Envuelve un handler async para que cualquier error llegue al middleware de errores
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// Sequelize envuelve el error de MySQL; el original (con code, sqlState y sqlMessage) queda en error.parent
+function errorMysql(error) {
+    return (error && error.parent) || error || {};
+}
+
 // Intenta la operacion y, si choca con una restriccion UNIQUE (ER_DUP_ENTRY), devuelve valorSiDuplicado
 async function ignorarDuplicado(operacion, valorSiDuplicado = false) {
     try {
         return await operacion();
     } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') return valorSiDuplicado;
+        if (errorMysql(error).code === 'ER_DUP_ENTRY') return valorSiDuplicado;
         throw error;
     }
 }
@@ -26,9 +31,9 @@ async function reintentarDeadlock(operacion, intentos = 5) {
         try {
             return await operacion();
         } catch (error) {
-            if (error.code !== 'ER_LOCK_DEADLOCK' || intento >= intentos) throw error;
+            if (errorMysql(error).code !== 'ER_LOCK_DEADLOCK' || intento >= intentos) throw error;
         }
     }
 }
 
-module.exports = { ErrorHttp, asyncHandler, ignorarDuplicado, reintentarDeadlock };
+module.exports = { ErrorHttp, asyncHandler, errorMysql, ignorarDuplicado, reintentarDeadlock };

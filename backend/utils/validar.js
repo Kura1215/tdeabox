@@ -89,6 +89,12 @@ function paginacion(query, { porDefecto = 10, maxLimit = 20 } = {}) {
     return { page, limit, offset: (page - 1) * limit };
 }
 
+// Bloque `paginacion` que devuelven las listas de la API
+function datosPaginacion(total, { page, limit }) {
+    return { page, limit, total, paginas: Math.ceil(total / limit) };
+}
+
 module.exports = {
-    texto, correoInstitucional, username, password, entero, etiquetas, booleano, paginacion, REGEX_USERNAME
+    texto, correoInstitucional, username, password, entero, etiquetas, booleano, paginacion, datosPaginacion,
+    REGEX_USERNAME
 };

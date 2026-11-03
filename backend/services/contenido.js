@@ -1,23 +1,24 @@
-const pool = require('../db');
+const { Op } = require('sequelize');
+const { Post, Comentario } = require('../models');
 const { eliminarImagen } = require('../middleware/upload');
 
 // Borra un post (la BD borra en cascada comentarios, likes, guardados y etiquetas; los reportes se
 // conservan) y despues limpia del disco las imagenes del post y de sus comentarios.
 async function eliminarPost(postId) {
-    const [imagenes] = await pool.query(
-        `SELECT imagen_url FROM posts WHERE id = ?
-         UNION ALL SELECT imagen_url FROM comentarios WHERE post_id = ?`, [postId, postId]);
-    await pool.query('DELETE FROM posts WHERE id = ?', [postId]);
-    imagenes.forEach((i) => eliminarImagen(i.imagen_url));
+    const post = await Post.findByPk(postId, { attributes: ['imagen_url'] });
+    const comentarios = await Comentario.findAll({ where: { post_id: postId }, attributes: ['imagen_url'] });
+    await Post.destroy({ where: { id: postId } });
+    [post, ...comentarios].forEach((i) => i && eliminarImagen(i.imagen_url));
 }
 
 // Borra un comentario y sus respuestas (cascada)
 async function eliminarComentario(comentarioId) {
-    const [imagenes] = await pool.query(
-        `SELECT imagen_url FROM comentarios WHERE id = ?
-         UNION ALL SELECT imagen_url FROM comentarios WHERE comentario_padre_id = ?`, [comentarioId, comentarioId]);
-    await pool.query('DELETE FROM comentarios WHERE id = ?', [comentarioId]);
-    imagenes.forEach((i) => eliminarImagen(i.imagen_url));
+    const comentarios = await Comentario.findAll({
+        where: { [Op.or]: [{ id: comentarioId }, { comentario_padre_id: comentarioId }] },
+        attributes: ['imagen_url']
+    });
+    await Comentario.destroy({ where: { id: comentarioId } });
+    comentarios.forEach((c) => eliminarImagen(c.imagen_url));
 }
 
 module.exports = { eliminarPost, eliminarComentario };

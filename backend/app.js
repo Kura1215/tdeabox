@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
+const cookieParser = require('cookie-parser');
 
 const { manejarErrores, noEncontrado } = require('./middleware/errores');
 const { uploadsDir } = require('./middleware/upload');
@@ -49,6 +49,8 @@ function crearApp({ authRateMax = Number(process.env.AUTH_RATE_MAX) || 30 } = {}
     }
 
     app.use(express.json({ limit: '100kb' }));
+    // lee la cookie HttpOnly de la sesion (solo la usan /api/auth/renovar y /api/auth/logout)
+    app.use(cookieParser());
     app.use('/uploads', express.static(uploadsDir));
 
     // freno a fuerza bruta en registro y login
@@ -64,7 +66,9 @@ function crearApp({ authRateMax = Number(process.env.AUTH_RATE_MAX) || 30 } = {}
         })
     });
 
-    app.use('/api/auth', limitadorAuth, authRoutes);
+    // el limite aplica solo a registro y login: renovar el token no debe gastar intentos
+    app.use(['/api/auth/login', '/api/auth/register'], limitadorAuth);
+    app.use('/api/auth', authRoutes);
     app.use('/api', postRoutes);
     app.use('/api', commentRoutes);
     app.use('/api/users', userRoutes);

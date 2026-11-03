@@ -130,6 +130,17 @@ CREATE TABLE IF NOT EXISTS reportes (
     FOREIGN KEY (comentario_id) REFERENCES comentarios(id) ON DELETE SET NULL
 );
 
+-- Sesiones abiertas: la cookie HttpOnly guarda un token aleatorio y aqui solo su hash (SHA-256).
+-- Cerrar sesion borra la fila, asi el servidor puede revocar la sesion aunque el JWT no haya vencido.
+CREATE TABLE IF NOT EXISTS sesiones (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id INT NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expira DATETIME NOT NULL,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS auditoria_admin (
     id INT AUTO_INCREMENT PRIMARY KEY,
     admin_id INT NULL,
